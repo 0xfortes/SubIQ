@@ -21,33 +21,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Download the repository code
       - uses: actions/checkout@v4
 
-      # Set Node first so pnpm runs with the version from .nvmrc.
+      # Install pnpm first.
+      # Version comes from package.json "packageManager": pnpm@11.13.1.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      # Install the Node version defined in .nvmrc (Node 22).
+      # pnpm must already exist before enabling pnpm cache.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # Version comes from package.json "packageManager": pnpm@11.13.1.
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
+      # Install exact dependency versions from pnpm-lock.yaml.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Verify TypeScript correctness.
       - name: Typecheck
         run: pnpm typecheck
 
+      # Verify code quality and style rules.
       - name: Lint
         run: pnpm lint
 
+      # Run automated tests.
       - name: Test
         run: pnpm test
 
-      # next build runs as NODE_ENV=production, so the Zod env schema
-      # requires these values. These are dummy build-only values.
+      # Verify the application can compile for production.
+      # These are dummy build-only values, not real secrets.
       - name: Build
         run: pnpm build
         env:
