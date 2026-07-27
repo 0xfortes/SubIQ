@@ -86,22 +86,57 @@ design so no build-time `prisma generate` is needed.
 
 Launch order (blockers first):
 
-1. Initial git commit + GitHub remote — done MANUALLY by the user (Claude
-   never commits; see Role & behavior). Repo has ZERO commits (everything
-   untracked on `main`); gitignore hygiene verified safe.
-2. CI workflow (`.github/workflows`) mirroring the local gate: typecheck,
-   lint, test, build (build needs the dummy secrets above). This is
-   Claude's resume point — the workflow files can be written before the
-   user's commit exists and simply be included in it.
-3. Migration deploy step — nothing runs migrations in prod today; change
-   `build` to `prisma migrate deploy && next build` (or a release step).
-4. Provision: hosted Postgres with a **pooled** connection string (the app
-   uses the `pg` driver adapter — serverless exhausts direct connections);
-   Resend API key + **verified sending domain** (default `EMAIL_FROM`
-   implies owning `subiq.app`; magic-link auth is unusable without email);
-   `AUTH_SECRET`/`CRON_SECRET` on Vercel.
+1. ✅ Initial git commit + GitHub remote — done MANUALLY by the user (Claude
+   never commits; see Role & behavior). Repo has an `initial commit`;
+   gitignore hygiene verified (`.env`, `.claude/settings.local.json`,
+   `tests/e2e/.auth/` all untracked).
+2. ✅ CI workflow — `.github/workflows/ci.yml` (single `verify` job: pnpm
+   install → typecheck → lint → test → build; build carries DUMMY
+   `DATABASE_URL`/`AUTH_SECRET`/`CRON_SECRET`) + `.nvmrc` (Node 22). Mirrors
+   the local gate; no `prisma generate` (client committed). Runs on push/PR
+   to `main`; `concurrency` cancel + least-priv `permissions`.
+3. ✅ Migration deploy step — `vercel.json` `buildCommand` runs
+   `prisma migrate deploy` **guarded to production**
+   (`if [ "$VERCEL_ENV" = production ]`) then `pnpm run build`; a migrate
+   failure aborts the deploy. Migrations use a DIRECT connection via new
+   optional `DIRECT_URL` (`prisma.config.ts`: `DIRECT_URL ?? DATABASE_URL`)
+   — runtime keeps the pooled `DATABASE_URL`. NOT in `package.json` build
+   (would break CI/local) and NOT on preview deploys (protects a shared DB).
+   `.env.example` documents `DIRECT_URL`.
+4. ← Claude's resume point (needs the USER's accounts). Provision a **SEPARATE,
+   fresh Supabase project for PROD** (the current project is DEV — it holds
+   seed/test data; free tier allows 2 projects). From the NEW prod project set
+   on Vercel: `DATABASE_URL` = **pooled** (Supabase transaction pooler `:6543`;
+   the app uses the `pg` driver adapter, serverless exhausts direct
+   connections) and `DIRECT_URL` = direct/session (`:5432`) for migrations
+   (`migrate deploy` on the empty prod DB builds clean schema — seeding never
+   runs on deploy). Plus Resend API key + **verified sending domain** (default
+   `EMAIL_FROM` implies owning `subiq.app`; magic-link auth is unusable without
+   email); `AUTH_SECRET`/`CRON_SECRET` on Vercel. Disable the Data API on the
+   prod project too (see Infra note).
 5. Deploy a preview → smoke-test magic-link sign-in end-to-end (the one
    flow no local test covers — dev email is console-only).
+
+**Security hardening (2026-07-28):** `subscriptions/service.ts` now validates
+a client-supplied `categoryId` belongs to the workspace before write
+(`resolveCategoryId`, used in create + update) — closes a cross-tenant
+category reference/leak (uuidv7 made it low-severity, but IDs are never
+trusted). DB layer otherwise audited clean: zero raw SQL in app code (all
+Prisma-parameterized), dynamic `orderBy`/status filters whitelisted, every
+mutation workspace-scoped, all inputs Zod-validated.
+
+**Supabase / infra decisions (2026-07-28):** Security Advisor's no-RLS warning
+RESOLVED by **disabling the Data API** — SubIQ reaches Postgres only via Prisma
+(the `postgres://` connection string), never the anon PostgREST API, so that
+API was pure attack surface; disabling it needs no RLS and nothing to maintain.
+(Fallback if ever re-enabled: a migration enabling RLS default-deny on every
+table — Prisma is unaffected, connecting as the table owner which bypasses RLS.)
+Tenant isolation does NOT depend on RLS — it's enforced in-app via `workspaceId`
+filtering. **DB separation:** current Supabase project stays DEV; PROD gets its
+own fresh project (databases don't merge — a connection string points at one DB;
+`migrate deploy` changes schema only, never deletes rows; seed never runs on
+deploy). Uncommitted working tree (`vercel.json`, `prisma.config.ts`,
+`.env.example`, `subscriptions/service.ts`, `CLAUDE.md`) awaits the user's commit.
 
 Pre-users, non-blocking: cron `maxDuration = 300` needs Vercel Pro (Hobby
 caps at 60s); error observability (Sentry — the one new dependency worth

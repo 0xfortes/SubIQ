@@ -22,14 +22,34 @@ function emptyToNull(value: string | undefined): string | null {
   return value ? value : null;
 }
 
+/**
+ * Never trust a client-supplied categoryId: verify it names a live category
+ * in THIS workspace before writing it to a subscription. Prevents a
+ * cross-tenant reference — and the category name/color leak a joined read
+ * would then expose. Returns the owned id, or null when unset.
+ */
+async function resolveCategoryId(
+  workspaceId: string,
+  categoryId: string | null | undefined,
+): Promise<string | null> {
+  if (!categoryId) return null;
+  const category = await db.category.findFirst({
+    where: { id: categoryId, workspaceId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!category) throw new NotFoundError("Category not found");
+  return category.id;
+}
+
 export async function createSubscription(
   workspaceId: string,
   input: CreateSubscriptionInput,
 ) {
+  const categoryId = await resolveCategoryId(workspaceId, input.categoryId);
   return db.subscription.create({
     data: {
       workspaceId,
-      categoryId: input.categoryId ?? null,
+      categoryId,
       name: input.name,
       vendor: emptyToNull(input.vendor),
       url: emptyToNull(input.url),
@@ -61,6 +81,11 @@ export async function updateSubscription(
     where: { id, workspaceId, deletedAt: null },
   });
   if (!existing) throw new NotFoundError();
+
+  // Reassignment must stay within the workspace (never trust client IDs).
+  if (changes.categoryId !== undefined) {
+    await resolveCategoryId(workspaceId, changes.categoryId);
+  }
 
   const anchorDate = changes.anchorDate ?? existing.anchorDate;
   const interval = changes.interval ?? existing.interval;
