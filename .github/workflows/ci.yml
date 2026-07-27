@@ -19,19 +19,20 @@ jobs:
   verify:
     name: Typecheck · Lint · Test · Build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      # Must precede setup-node so its pnpm cache can resolve the store path.
-      # Version comes from package.json "packageManager": pnpm@11.13.1.
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
+      # Set Node first so pnpm runs with the version from .nvmrc.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
+
+      # Version comes from package.json "packageManager": pnpm@11.13.1.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -46,12 +47,10 @@ jobs:
         run: pnpm test
 
       # next build runs as NODE_ENV=production, so the Zod env schema
-      # (src/lib/env.ts) requires AUTH_SECRET (>=32) and CRON_SECRET (>=16).
-      # These are DUMMY build-only values — no DB connection is made, only the
-      # URL FORMAT is validated. Never put real secrets here.
+      # requires these values. These are dummy build-only values.
       - name: Build
         run: pnpm build
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/subiq_ci
           AUTH_SECRET: ci-build-only-dummy-auth-secret-0000000000
-          CRON_SECRET: ci-build-only-dummy-cron
+          CRON_SECRET: ci-build-only-dummy-cron-secret-000000
