@@ -1,0 +1,263 @@
+// SubIQ V1 schema.
+// Non-negotiables honored here: workspaceId on every tenant-owned table,
+// money as integer minor units + ISO 4217 currency, computed recurrence
+// with a denormalized nextRenewalAt, soft deletes on user data, UUID PKs,
+// timestamptz everywhere, enums over magic strings.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Connection URL lives in prisma.config.ts (Prisma 7); the runtime client
+// gets it via the pg driver adapter in src/lib/db.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum WorkspaceRole {
+  OWNER
+  // Org roles (ADMIN, MEMBER, …) are a v2 data change, not a migration.
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAUSED
+  CANCELLED
+}
+
+enum BillingInterval {
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum InsightType {
+  DUPLICATE_CATEGORY
+  ANNUAL_SAVINGS
+  TRIAL_ENDING
+}
+
+enum InsightStatus {
+  ACTIVE
+  DISMISSED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  email         String    @unique
+  emailVerified DateTime? @db.Timestamptz(3)
+  name          String?
+  image         String?
+  // IANA zone, applied at the presentation layer only — storage is UTC.
+  timezone      String    @default("UTC")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships WorkspaceMember[]
+}
+
+// Account / Session / VerificationToken follow the Auth.js Prisma adapter
+// shape (magic link + OAuth, DB-backed revocable sessions).
+
+model Account {
+  id                String  @id @default(uuid(7)) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime @db.Timestamptz(3)
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  name            String
+  // Presentation/aggregation default; each subscription still carries its
+  // own currency. v1 does no FX conversion.
+  defaultCurrency String   @default("USD") @db.Char(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  members       WorkspaceMember[]
+  categories    Category[]
+  subscriptions Subscription[]
+  insights      AiInsight[]
+  reminders     RenewalReminder[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  workspaceId String        @db.Uuid
+  userId      String        @db.Uuid
+  role        WorkspaceRole @default(OWNER)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  // URL-facing identity (?category=slug) — stable, unique per workspace.
+  slug        String
+  // Hex from the DESIGN.md category hue family; canonical home of the color.
+  color       String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt   DateTime? @db.Timestamptz(3)
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+model Subscription {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  workspaceId String  @db.Uuid
+  categoryId  String? @db.Uuid
+
+  name       String
+  // Billing entity when it differs from the service name (e.g. "Adobe").
+  vendor     String?
+  url        String?
+  notes      String?
+  // Brand hue for avatars/marks; falls back to the category color in UI.
+  color      String?
+  isFavorite Boolean @default(false)
+
+  // Money: integer minor units + ISO 4217. Never floats.
+  amountMinor Int
+  currency    String @db.Char(3)
+
+  // Recurrence: nextRenewalAt is DERIVED by lib/recurrence.ts (calendar-
+  // aware) — recomputed on every write and by the nightly job. anchorDate
+  // is a calendar date; renewal instants are stored UTC.
+  interval      BillingInterval
+  intervalCount Int             @default(1)
+  anchorDate    DateTime        @db.Date
+  nextRenewalAt DateTime        @db.Timestamptz(3)
+
+  status      SubscriptionStatus @default(ACTIVE)
+  trialEndsAt DateTime?          @db.Timestamptz(3)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  // Archive (soft delete) — distinct from status CANCELLED, which is a
+  // real lifecycle state the user still sees.
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  reminders RenewalReminder[]
+
+  @@index([workspaceId, nextRenewalAt])
+  @@index([workspaceId, status])
+  @@index([categoryId])
+}
+
+// Rule-based in v1; LLM-generated later writes the same rows (service
+// change, not schema change).
+model AiInsight {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  workspaceId String        @db.Uuid
+  type        InsightType
+  status      InsightStatus @default(ACTIVE)
+
+  title String
+  body  String
+  // Structured payload for rendering/actions; shape is owned by the
+  // insights service and versioned there.
+  data  Json   @default("{}")
+
+  // Estimated recoverable amount (minor units), when the insight has one.
+  savingsMinor Int?
+  currency     String? @db.Char(3)
+
+  // Related subscriptions as ids, not FKs: insights are regenerable derived
+  // data; the service tolerates stale ids after deletes.
+  subscriptionIds String[] @db.Uuid
+
+  // Stable identity per logical finding — grammar owned by
+  // features/insights/rules.ts ("duplicate:{categoryId}", "annual:{subId}",
+  // "trial:{subId}:{date}") — so regeneration upserts instead of
+  // duplicating, and a user's dismissal survives regeneration.
+  dedupeKey   String
+  dismissedAt DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, dedupeKey])
+  @@index([workspaceId, status])
+}
+
+// One row per (subscription, renewal occurrence) reminder actually sent —
+// the cron job's idempotency ledger. No double emails, safe retries.
+model RenewalReminder {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  workspaceId    String   @db.Uuid
+  subscriptionId String   @db.Uuid
+  // The renewal occurrence this reminder was for.
+  renewalAt      DateTime @db.Timestamptz(3)
+  sentAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, renewalAt])
+  @@index([workspaceId])
+}

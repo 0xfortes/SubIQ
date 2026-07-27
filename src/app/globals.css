@@ -1,0 +1,222 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * SubIQ design tokens — single source of truth, mapped from DESIGN.md.
+ * Dark is the only v1 theme; light mode later is a token swap, not a refactor.
+ * Components never use raw hex — only these tokens (Tailwind utilities) or
+ * the shadcn semantic vars below, which alias the same values.
+ *
+ * Naming collisions resolved in DESIGN.md's favor:
+ *   `accent` = #8B93FF (primary actions/selection/links), NOT shadcn's
+ *   subtle-hover accent — use `accent-soft` (or white/4) for hover fills.
+ *   `muted` = secondary text color, NOT shadcn's muted surface — use
+ *   `surface-2` for muted fills (skeletons, wells).
+ */
+@theme {
+  /* Color — DESIGN.md "Tokens" table */
+  --color-bg: #0b0c0f;
+  --color-surface: #12141a;
+  --color-surface-2: #171a22;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
+  --color-text: #edeff4;
+  --color-muted: #969cab;
+  --color-faint: #5c6272;
+  --color-accent: #8b93ff;
+  --color-accent-soft: rgba(139, 147, 255, 0.14);
+  --color-mint: #4fd1a1;
+  --color-mint-soft: rgba(79, 209, 161, 0.13);
+  --color-amber: #f2b25c;
+  --color-amber-soft: rgba(242, 178, 92, 0.13);
+  --color-rose: #f0708a;
+  --color-rose-soft: rgba(240, 112, 138, 0.12);
+  /* Subtle hover wash (nav items, table rows) — DESIGN.md white 4% */
+  --color-wash: rgba(255, 255, 255, 0.04);
+  /* Near-black text on accent-filled primary buttons */
+  --color-on-accent: #101223;
+
+  /* Shape — cards 14px · controls 8px · flags 4px · pills 999px */
+  --radius-card: 0.875rem;
+  --radius-control: 0.5rem;
+  --radius-flag: 0.25rem;
+  --radius-pill: 999px;
+
+  /* Layout — sidebar 244px · content max-width 1160px */
+  --spacing-sidebar: 15.25rem;
+  --container-content: 72.5rem;
+}
+
+/*
+ * Category palette (seed values only — the canonical color lives on each
+ * Category row in the database, per DESIGN.md):
+ * Design #8B93FF · Entertainment #F0708A · AI Tools #C9A0F5 ·
+ * Dev & Infra #6FA8F5 · Productivity #4FD1A1 · Health #F2B25C
+ */
+
+/* shadcn semantic vars → aliased onto SubIQ tokens (never duplicate hex) */
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface-2);
+  --color-popover-foreground: var(--color-text);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-on-accent);
+  --color-secondary: var(--color-surface-2);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted-foreground: var(--color-muted);
+  --color-accent-foreground: var(--color-text);
+  --color-destructive: var(--color-rose);
+  --color-border: var(--color-line);
+  --color-input: var(--color-line-strong);
+  --color-ring: var(--color-accent);
+  --color-chart-1: var(--color-accent);
+  --color-chart-2: var(--color-rose);
+  --color-chart-3: #c9a0f5;
+  --color-chart-4: #6fa8f5;
+  --color-chart-5: var(--color-mint);
+  --color-sidebar: var(--color-surface);
+  --color-sidebar-foreground: var(--color-text);
+  --color-sidebar-primary: var(--color-accent);
+  --color-sidebar-primary-foreground: var(--color-on-accent);
+  --color-sidebar-accent: var(--color-accent-soft);
+  --color-sidebar-accent-foreground: var(--color-text);
+  --color-sidebar-border: var(--color-line);
+  --color-sidebar-ring: var(--color-accent);
+
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-inter);
+
+  /* shadcn radius scale pinned to DESIGN.md values */
+  --radius-sm: var(--radius-flag);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-card);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-card);
+  --radius-3xl: var(--radius-card);
+  --radius-4xl: var(--radius-card);
+}
+
+/*
+ * Marketing motion (landing page only — app surfaces keep DESIGN.md's
+ * no-entrance-animation rule). Predetermined entrances run as CSS so they
+ * stay smooth while the page is loading; reduced motion collapses
+ * everything to opacity-only.
+ */
+@theme {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+@keyframes marketing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes marketing-drift {
+  from {
+    transform: translate3d(-4%, -3%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) scale(1.08);
+  }
+}
+
+/* Hero entrance — stagger via inline animation-delay. */
+.marketing-rise {
+  opacity: 0;
+  animation: marketing-rise 700ms var(--ease-out-strong) forwards;
+}
+
+/* Ambient glow orbs — slow, GPU-only drift. */
+.marketing-glow {
+  animation: marketing-drift 26s ease-in-out infinite alternate;
+}
+
+/* Scroll reveal — toggled by the Reveal component via data-visible. */
+.marketing-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 600ms var(--ease-out-strong),
+    transform 600ms var(--ease-out-strong);
+}
+.marketing-reveal[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Ruler demo flags — pop in with a hint of overshoot, staggered inline. */
+.marketing-flag {
+  opacity: 0;
+  transform: translateY(10px) scale(0.92);
+  transition:
+    opacity 500ms var(--ease-out-back),
+    transform 500ms var(--ease-out-back);
+}
+[data-visible="true"] .marketing-flag {
+  opacity: 1;
+  transform: none;
+}
+
+/* How-it-works underline — draws left-to-right on reveal. */
+.marketing-line {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 900ms var(--ease-out-strong) 150ms;
+}
+[data-visible="true"] .marketing-line {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-rise {
+    animation: none;
+    opacity: 1;
+  }
+  .marketing-glow {
+    animation: none;
+  }
+  .marketing-reveal,
+  .marketing-flag {
+    transform: none;
+    transition: opacity 300ms ease;
+  }
+  .marketing-line {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Data figures: JetBrains Mono + tabular numerals for ALL money, dates,
+   counts, and tick labels (money is never set in Inter). */
+@utility font-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg text-text;
+    font-size: 13.5px;
+  }
+}

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch/PR cancels an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck · Lint · Test · Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must precede setup-node so its pnpm cache can resolve the store path.
+      # Version comes from package.json "packageManager": pnpm@11.13.1.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # next build runs as NODE_ENV=production, so the Zod env schema
+      # (src/lib/env.ts) requires AUTH_SECRET (>=32) and CRON_SECRET (>=16).
+      # These are DUMMY build-only values — no DB connection is made, only the
+      # URL FORMAT is validated. Never put real secrets here.
+      - name: Build
+        run: pnpm build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/subiq_ci
+          AUTH_SECRET: ci-build-only-dummy-auth-secret-0000000000
+          CRON_SECRET: ci-build-only-dummy-cron
