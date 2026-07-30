@@ -1,9 +1,10 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { daysUntil, todayInZone, zonedYMD } from "@/lib/dates";
-import { monthlyEquivalentMinor } from "@/lib/money";
+import { convertMinor, monthlyEquivalentInBaseMinor } from "@/lib/money";
 import { renewalOccurrencesBetween } from "@/lib/recurrence";
 import { RULER_DAYS, type RulerItem } from "@/lib/renewal-ruler";
+import { BILLING_STATUSES } from "@/lib/subscription-status";
 import { BillingInterval, SubscriptionStatus } from "@/generated/prisma/enums";
 import { cycleSuffix } from "@/lib/recurrence";
 
@@ -11,19 +12,13 @@ import { cycleSuffix } from "@/lib/recurrence";
  * One scoped fetch layer for the dashboard. A single subscriptions query
  * feeds every widget (no N+1); aggregation happens in JS at personal scale.
  *
- * Currency: money KPIs and totals aggregate only subscriptions in the
- * workspace default currency (no FX in v1); the count of excluded
- * foreign-currency subscriptions is surfaced so sublines can be honest.
+ * Currency: every money figure is converted into the workspace base currency
+ * (convertMinor) before summing, so totals include all subscriptions
+ * regardless of their original currency — the dashboard shows one currency.
  */
 
 const TREND_MONTHS = 6;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Statuses that still bill (contribute to spend + renewals). */
-const BILLING = new Set<SubscriptionStatus>([
-  SubscriptionStatus.ACTIVE,
-  SubscriptionStatus.TRIAL,
-]);
 
 export interface SubscriptionLite {
   id: string;
@@ -50,10 +45,8 @@ export interface AccordionCategory {
   children: {
     id: string;
     name: string;
-    amountMinor: number;
-    currency: string;
-    interval: BillingInterval;
-    intervalCount: number;
+    /** Monthly-equivalent spend in base currency — children sum to the total. */
+    monthlyMinor: number;
   }[];
 }
 
@@ -63,7 +56,6 @@ export interface DashboardKpis {
   billingCount: number;
   activeCount: number;
   trialCount: number;
-  foreignCurrencyCount: number;
   renewingThisWeekCount: number;
   renewingThisWeekMinor: number;
   currency: string;
@@ -81,14 +73,6 @@ export interface DashboardData {
   trend: TrendPoint[];
   accordion: AccordionCategory[];
   defaultCurrency: string;
-}
-
-function monthly(sub: SubscriptionLite): number {
-  return monthlyEquivalentMinor(
-    sub.amountMinor,
-    sub.interval,
-    sub.intervalCount,
-  );
 }
 
 /** Request-cached so layout (accordion), dashboard, and analytics share one
@@ -129,6 +113,8 @@ export async function getDashboardData(
   const [workspace, subs] = await fetchWorkspaceSubs(workspaceId);
 
   const currency = workspace.defaultCurrency;
+  const monthlyBase = (sub: SubscriptionLite) =>
+    monthlyEquivalentInBaseMinor(sub, currency);
   const now = new Date();
   // Renewal windows count from the user's local today (UTC midnight of that
   // calendar day), so today's renewals don't vanish before the user's day ends.
@@ -137,7 +123,7 @@ export async function getDashboardData(
   // ----- Accordion (always unscoped: it IS the scope selector) -----
   const categories = new Map<string, AccordionCategory>();
   for (const sub of subs) {
-    if (!sub.category || !BILLING.has(sub.status)) continue;
+    if (!sub.category || !BILLING_STATUSES.has(sub.status)) continue;
     let entry = categories.get(sub.category.id);
     if (!entry) {
       entry = {
@@ -148,21 +134,19 @@ export async function getDashboardData(
       };
       categories.set(sub.category.id, entry);
     }
-    if (sub.currency === currency) entry.monthlyTotalMinor += monthly(sub);
+    entry.monthlyTotalMinor += monthlyBase(sub);
     entry.children.push({
       id: sub.id,
       name: sub.name,
-      amountMinor: sub.amountMinor,
-      currency: sub.currency,
-      interval: sub.interval,
-      intervalCount: sub.intervalCount,
+      // Monthly-equivalent in base, so the children sum exactly to the header.
+      monthlyMinor: monthlyBase(sub),
     });
   }
   const accordion = [...categories.values()].sort(
     (a, b) => b.monthlyTotalMinor - a.monthlyTotalMinor,
   );
   for (const entry of accordion) {
-    entry.children.sort((a, b) => b.amountMinor - a.amountMinor);
+    entry.children.sort((a, b) => b.monthlyMinor - a.monthlyMinor);
   }
 
   // ----- Scope -----
@@ -172,10 +156,9 @@ export async function getDashboardData(
   const scoped = scopeCategory
     ? subs.filter((sub) => sub.category?.slug === categorySlug)
     : subs;
-  const billing = scoped.filter((sub) => BILLING.has(sub.status));
+  const billing = scoped.filter((sub) => BILLING_STATUSES.has(sub.status));
 
   // ----- KPIs -----
-  const inCurrency = billing.filter((sub) => sub.currency === currency);
   const weekWindow = new Date(todayStart.getTime() + 7 * DAY_MS);
   let renewingThisWeekCount = 0;
   let renewingThisWeekMinor = 0;
@@ -189,21 +172,20 @@ export async function getDashboardData(
     );
     if (occurrences.length > 0) {
       renewingThisWeekCount += 1;
-      if (sub.currency === currency) {
-        renewingThisWeekMinor += sub.amountMinor * occurrences.length;
-      }
+      renewingThisWeekMinor +=
+        convertMinor(sub.amountMinor, sub.currency, currency) *
+        occurrences.length;
     }
   }
 
   const kpis: DashboardKpis = {
     scopeLabel: scopeCategory?.name ?? null,
-    monthlySpendMinor: inCurrency.reduce((sum, sub) => sum + monthly(sub), 0),
+    monthlySpendMinor: billing.reduce((sum, sub) => sum + monthlyBase(sub), 0),
     billingCount: billing.length,
     activeCount: scoped.filter((s) => s.status === SubscriptionStatus.ACTIVE)
       .length,
     trialCount: scoped.filter((s) => s.status === SubscriptionStatus.TRIAL)
       .length,
-    foreignCurrencyCount: billing.length - inCurrency.length,
     renewingThisWeekCount,
     renewingThisWeekMinor,
     currency,
@@ -214,6 +196,7 @@ export async function getDashboardData(
   const rulerItems: RulerItem[] = [];
   let rulerTotalMinor = 0;
   for (const sub of billing) {
+    const amountInBase = convertMinor(sub.amountMinor, sub.currency, currency);
     for (const occurrence of renewalOccurrencesBetween(
       sub.anchorDate,
       sub.interval,
@@ -224,13 +207,13 @@ export async function getDashboardData(
       rulerItems.push({
         id: `${sub.id}:${occurrence.toISOString()}`,
         day: daysUntil(occurrence, todayStart),
-        amountMinor: sub.amountMinor,
-        currency: sub.currency,
+        amountMinor: amountInBase,
+        currency,
         name: sub.name,
         color: sub.color,
         cycle: cycleSuffix(sub.interval, sub.intervalCount),
       });
-      if (sub.currency === currency) rulerTotalMinor += sub.amountMinor;
+      rulerTotalMinor += amountInBase;
     }
   }
 
@@ -251,12 +234,8 @@ export async function getDashboardData(
     trend.push({
       month: monthLabel.format(monthEnd),
       amountMinor: billing
-        .filter(
-          (sub) =>
-            sub.currency === currency &&
-            sub.anchorDate.getTime() <= monthEnd.getTime(),
-        )
-        .reduce((sum, sub) => sum + monthly(sub), 0),
+        .filter((sub) => sub.anchorDate.getTime() <= monthEnd.getTime())
+        .reduce((sum, sub) => sum + monthlyBase(sub), 0),
     });
   }
 

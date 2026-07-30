@@ -142,6 +142,20 @@ export async function restoreSubscriptions(workspaceId: string, ids: string[]) {
   return result.count;
 }
 
+/**
+ * Hard delete — permanent and irreversible (archive is the reversible path).
+ * Workspace-scoped like every mutation. Any owned row can be deleted, archived
+ * or not. RenewalReminder rows cascade in the DB (onDelete: Cascade);
+ * AiInsight.subscriptionIds is loose, non-FK data that regenerateInsights
+ * prunes after the delete.
+ */
+export async function deleteSubscriptions(workspaceId: string, ids: string[]) {
+  const result = await db.subscription.deleteMany({
+    where: { id: { in: ids }, workspaceId },
+  });
+  return result.count;
+}
+
 export async function duplicateSubscription(workspaceId: string, id: string) {
   const existing = await db.subscription.findFirst({
     where: { id, workspaceId, deletedAt: null },

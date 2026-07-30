@@ -1,24 +1,19 @@
 import { BillingInterval, SubscriptionStatus } from "@/generated/prisma/enums";
-import { monthlyEquivalentMinor } from "@/lib/money";
+import { convertMinor, monthlyEquivalentInBaseMinor } from "@/lib/money";
+import { BILLING_STATUSES } from "@/lib/subscription-status";
 import { cycleSuffix, renewalOccurrencesBetween } from "@/lib/recurrence";
 
 /**
  * Pure analytics aggregations — no DB, no React, exhaustively testable.
  *
- * Money rule (matches the dashboard): aggregates include only subscriptions
- * in the workspace default currency (no FX in v1); the excluded billing
- * count is surfaced so the UI can be honest about it.
+ * Money rule (matches the dashboard): every amount is converted into the
+ * workspace base currency, so aggregates include all billing subscriptions
+ * regardless of their original currency.
  */
 
 export const PROJECTION_MONTHS = 12;
 export const LEADERBOARD_LIMIT = 10;
 export const UNCATEGORIZED_ID = "uncategorized";
-
-/** Statuses that still bill — keep in sync with dashboard/queries.ts. */
-const BILLING = new Set<SubscriptionStatus>([
-  SubscriptionStatus.ACTIVE,
-  SubscriptionStatus.TRIAL,
-]);
 
 export interface AnalyticsSub {
   id: string;
@@ -33,28 +28,8 @@ export interface AnalyticsSub {
   category: { id: string; name: string; color: string } | null;
 }
 
-function included(subs: AnalyticsSub[], currency: string): AnalyticsSub[] {
-  return subs.filter(
-    (sub) => BILLING.has(sub.status) && sub.currency === currency,
-  );
-}
-
-function monthly(sub: AnalyticsSub): number {
-  return monthlyEquivalentMinor(
-    sub.amountMinor,
-    sub.interval,
-    sub.intervalCount,
-  );
-}
-
-/** Billing subs excluded from money aggregates for currency honesty. */
-export function foreignBillingCount(
-  subs: AnalyticsSub[],
-  currency: string,
-): number {
-  return subs.filter(
-    (sub) => BILLING.has(sub.status) && sub.currency !== currency,
-  ).length;
+function included(subs: AnalyticsSub[]): AnalyticsSub[] {
+  return subs.filter((sub) => BILLING_STATUSES.has(sub.status));
 }
 
 export interface CategorySlice {
@@ -76,7 +51,7 @@ export function categoryBreakdown(
 ): CategorySlice[] {
   const slices = new Map<string, CategorySlice>();
   let totalMinor = 0;
-  for (const sub of included(subs, currency)) {
+  for (const sub of included(subs)) {
     const key = sub.category?.id ?? UNCATEGORIZED_ID;
     let slice = slices.get(key);
     if (!slice) {
@@ -90,7 +65,7 @@ export function categoryBreakdown(
       };
       slices.set(key, slice);
     }
-    const amount = monthly(sub);
+    const amount = monthlyEquivalentInBaseMinor(sub, currency);
     slice.monthlyMinor += amount;
     slice.count += 1;
     totalMinor += amount;
@@ -159,7 +134,8 @@ export function projectionByMonth(
   // month (excluded), to = last day of the final bucket.
   const from = new Date(Date.UTC(y, mIdx + 1, 0));
   const to = new Date(Date.UTC(y, mIdx + 1 + months, 0));
-  for (const sub of included(subs, currency)) {
+  for (const sub of included(subs)) {
+    const amountInBase = convertMinor(sub.amountMinor, sub.currency, currency);
     for (const occurrence of renewalOccurrencesBetween(
       sub.anchorDate,
       sub.interval,
@@ -170,7 +146,7 @@ export function projectionByMonth(
       const key = `${occurrence.getUTCFullYear()}-${String(occurrence.getUTCMonth() + 1).padStart(2, "0")}`;
       const bucket = buckets.get(key);
       if (!bucket) continue;
-      bucket.totalMinor += sub.amountMinor;
+      bucket.totalMinor += amountInBase;
       bucket.count += 1;
     }
   }
@@ -198,16 +174,16 @@ export function costLeaderboard(
   subs: AnalyticsSub[],
   currency: string,
 ): LeaderboardRow[] {
-  const rows = included(subs, currency).map((sub) => ({
+  const rows = included(subs).map((sub) => ({
     id: sub.id,
     name: sub.name,
     color: sub.color,
     categoryName: sub.category?.name ?? null,
     categoryColor: sub.category?.color ?? null,
-    amountMinor: sub.amountMinor,
-    currency: sub.currency,
+    amountMinor: convertMinor(sub.amountMinor, sub.currency, currency),
+    currency,
     cycle: cycleSuffix(sub.interval, sub.intervalCount),
-    monthlyMinor: monthly(sub),
+    monthlyMinor: monthlyEquivalentInBaseMinor(sub, currency),
     share: 0,
   }));
   const totalMinor = rows.reduce((sum, row) => sum + row.monthlyMinor, 0);

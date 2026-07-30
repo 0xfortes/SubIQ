@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BillingInterval } from "@/generated/prisma/enums";
 import {
+  convertMinor,
   formatMoney,
   formatMoneyInput,
+  monthlyEquivalentInBaseMinor,
   monthlyEquivalentMinor,
   parseMoneyInput,
 } from "@/lib/money";
@@ -110,5 +112,63 @@ describe("monthlyEquivalentMinor", () => {
     expect(() =>
       monthlyEquivalentMinor(1000, BillingInterval.MONTH, 1.5),
     ).toThrow(/intervalCount/);
+  });
+});
+
+describe("convertMinor", () => {
+  it("is an exact identity for same-currency", () => {
+    expect(convertMinor(1299, "USD", "USD")).toBe(1299);
+  });
+
+  it("converts between two-decimal currencies", () => {
+    // $10 → €9.20 at 0.92; €10 → $10.87 back.
+    expect(convertMinor(1000, "USD", "EUR")).toBe(920);
+    expect(convertMinor(1000, "EUR", "USD")).toBe(1087);
+  });
+
+  it("handles zero-decimal currencies both ways", () => {
+    // $10 → ¥1510 at 151; ¥1500 → $9.93 back.
+    expect(convertMinor(1000, "USD", "JPY")).toBe(1510);
+    expect(convertMinor(1500, "JPY", "USD")).toBe(993);
+  });
+
+  it("falls back to identity for an unknown currency", () => {
+    expect(convertMinor(1000, "USD", "XYZ")).toBe(1000);
+    expect(convertMinor(1000, "XYZ", "USD")).toBe(1000);
+  });
+
+  it("rejects non-integer amounts", () => {
+    expect(() => convertMinor(12.5, "USD", "EUR")).toThrow(/integer/);
+  });
+});
+
+describe("monthlyEquivalentInBaseMinor", () => {
+  it("passes a base-currency monthly charge through unchanged", () => {
+    expect(
+      monthlyEquivalentInBaseMinor(
+        {
+          amountMinor: 1299,
+          currency: "USD",
+          interval: BillingInterval.MONTH,
+          intervalCount: 1,
+        },
+        "USD",
+      ),
+    ).toBe(1299);
+  });
+
+  it("converts a foreign yearly charge into a base monthly amount", () => {
+    // €120/yr → ~$130.43/yr → ~$10.87/mo.
+    expect(
+      monthlyEquivalentInBaseMinor(
+        {
+          amountMinor: 12000,
+          currency: "EUR",
+          interval: BillingInterval.YEAR,
+          intervalCount: 1,
+        },
+        "USD",
+      ),
+    ).toBe(1087);
   });
 });

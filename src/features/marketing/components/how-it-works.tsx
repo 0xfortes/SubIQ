@@ -4,17 +4,17 @@ const STEPS = [
   {
     number: "01",
     title: "Add your subscriptions",
-    body: "Name, price, billing cycle. Ten of them takes about three minutes.",
+    body: "Enter the name, price, and billing cycle. Ten of them takes about three minutes.",
   },
   {
     number: "02",
     title: "See what's coming",
-    body: "Renewal dates are computed automatically and laid out on your 30-day ruler.",
+    body: "SubIQ works out every renewal date and lays them on a 30-day timeline.",
   },
   {
     number: "03",
     title: "Act on insights",
-    body: "Cancel the duplicate, catch the trial, switch to annual — before the next charge.",
+    body: "Cancel a duplicate, stop a trial before it charges, or move a plan to yearly billing.",
   },
 ];
 
@@ -27,7 +27,7 @@ export function HowItWorks() {
             How it works
           </p>
           <h2 className="text-text mt-3 text-[28px] font-medium tracking-[-0.02em] sm:text-[34px]">
-            Set up in 30 seconds.
+            Three steps to start.
           </h2>
         </Reveal>
         <div className="mt-14 grid gap-10 sm:grid-cols-3 sm:gap-8">

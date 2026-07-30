@@ -58,7 +58,7 @@ export const listFiltersSchema = z.object({
   q: z.string().trim().max(100).optional(),
   status: z.enum(STATUS_FILTERS).default("all"),
   category: z.string().trim().max(100).optional(),
-  sort: z.enum(SORT_OPTIONS).default("renewal"),
+  sort: z.enum(SORT_OPTIONS).default("cost"),
 });
 
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;

@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export function Footer() {
   return (
     <footer className="border-line border-t">
@@ -9,20 +7,12 @@ export function Footer() {
             S
           </div>
           <span className="text-muted text-xs">
-            SubIQ — know where your money quietly goes.
+            SubIQ. Track every subscription and renewal.
           </span>
         </div>
-        <nav aria-label="Footer" className="flex items-center gap-4 text-xs">
-          <Link
-            href="/signin"
-            className="text-muted hover:text-text focus-visible:outline-accent rounded-sm transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2"
-          >
-            Sign in
-          </Link>
-          <span className="font-data text-faint">
-            © {new Date().getFullYear()}
-          </span>
-        </nav>
+        <span className="font-data text-faint text-xs">
+          © {new Date().getFullYear()}
+        </span>
       </div>
     </footer>
   );

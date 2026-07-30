@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CategoryMark } from "@/components/ui/category-mark";
 import {
   ChartLine,
   LayoutDashboard,
@@ -115,11 +116,7 @@ export function CommandPalette({
                   value={category.name}
                   onSelect={() => run(`/dashboard?category=${category.slug}`)}
                 >
-                  <span
-                    aria-hidden
-                    className="size-[7px] shrink-0 rounded-[2px]"
-                    style={{ backgroundColor: category.color }}
-                  />
+                  <CategoryMark color={category.color} />
                   {category.name}
                 </CommandItem>
               ))}

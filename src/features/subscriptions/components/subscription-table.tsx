@@ -3,7 +3,7 @@
 import { useState, useOptimistic, useTransition } from "react";
 import { MoreHorizontal, RotateCcw, Star } from "lucide-react";
 import { toast } from "sonner";
-import { formatMoney } from "@/lib/money";
+import { convertMinor, formatMoney } from "@/lib/money";
 import { formatDay, todayInZone } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,14 +16,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   archiveSubscriptionsAction,
+  deleteSubscriptionsAction,
   duplicateSubscriptionAction,
   restoreSubscriptionsAction,
   toggleFavoriteAction,
 } from "../actions";
 import { cycleSuffix } from "@/lib/recurrence";
 import type { SubscriptionRow } from "../queries";
-import { ServiceAvatar } from "./service-avatar";
+import { ServiceAvatar } from "@/components/ui/service-avatar";
+import { CategoryMark } from "@/components/ui/category-mark";
 import { StatusPill } from "./status-pill";
 
 interface SubscriptionTableProps {
@@ -34,6 +46,8 @@ interface SubscriptionTableProps {
   archived?: boolean;
   /** User's IANA timezone — the "today" reference for the renewal column. */
   timeZone?: string;
+  /** Workspace base currency — every Cost is converted into it for display. */
+  defaultCurrency: string;
 }
 
 type OptimisticPatch =
@@ -50,6 +64,7 @@ export function SubscriptionTable({
   emptyMessage,
   archived = false,
   timeZone = "UTC",
+  defaultCurrency,
 }: SubscriptionTableProps) {
   const [, startTransition] = useTransition();
   // Renewal dates are calendar days (formatted in UTC); the zoned "today"
@@ -172,6 +187,30 @@ export function SubscriptionTable({
     });
   }
 
+  // Hard delete is irreversible, so it routes through a confirm dialog rather
+  // than the optimistic + undo pattern archive uses.
+  const [pendingDelete, setPendingDelete] = useState<{
+    ids: string[];
+    label: string;
+  } | null>(null);
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    const { ids, label } = pendingDelete;
+    setPendingDelete(null);
+    setSelected(new Set());
+    startTransition(async () => {
+      applyPatch(
+        ids.length === 1
+          ? { kind: "remove", id: ids[0]! }
+          : { kind: "remove-many", ids },
+      );
+      const result = await deleteSubscriptionsAction({ ids });
+      if (result.ok) toast.success(`Deleted ${label}`);
+      else toast.error(result.error);
+    });
+  }
+
   if (optimisticRows.length === 0) {
     return (
       <div className="px-4 py-10 text-center">
@@ -205,9 +244,22 @@ export function SubscriptionTable({
               size="sm"
               disabled={overLimit}
               onClick={handleBulkArchive}
-              className="text-rose hover:text-rose"
             >
               Archive
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={overLimit}
+              onClick={() =>
+                setPendingDelete({
+                  ids: [...visibleSelected],
+                  label: `${visibleSelected.size} subscription${visibleSelected.size === 1 ? "" : "s"}`,
+                })
+              }
+              className="text-rose hover:text-rose"
+            >
+              Delete
             </Button>
           </div>
         </div>
@@ -312,11 +364,7 @@ export function SubscriptionTable({
               <td className="hidden px-3 py-2.5 md:table-cell">
                 {row.category ? (
                   <span className="text-muted flex items-center gap-1.5">
-                    <span
-                      aria-hidden
-                      className="size-[7px] rounded-[2px]"
-                      style={{ backgroundColor: row.category.color }}
-                    />
+                    <CategoryMark color={row.category.color} />
                     {row.category.name}
                   </span>
                 ) : (
@@ -325,7 +373,14 @@ export function SubscriptionTable({
               </td>
               <td className="px-3 py-2.5 text-right">
                 <span className="font-data text-text">
-                  {formatMoney(row.amountMinor, row.currency)}
+                  {formatMoney(
+                    convertMinor(
+                      row.amountMinor,
+                      row.currency,
+                      defaultCurrency,
+                    ),
+                    defaultCurrency,
+                  )}
                 </span>
                 <span className="font-data text-faint text-[11px]">
                   {cycleSuffix(row.interval, row.intervalCount)}
@@ -341,15 +396,42 @@ export function SubscriptionTable({
               </td>
               <td className="px-2 py-2.5">
                 {archived ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRestore(row)}
-                    aria-label={`Restore ${row.name}`}
-                  >
-                    <RotateCcw size={12} aria-hidden data-icon="inline-start" />
-                    Restore
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRestore(row)}
+                      aria-label={`Restore ${row.name}`}
+                    >
+                      <RotateCcw
+                        size={12}
+                        aria-hidden
+                        data-icon="inline-start"
+                      />
+                      Restore
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`More actions for ${row.name}`}
+                        >
+                          <MoreHorizontal size={14} aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() =>
+                            setPendingDelete({ ids: [row.id], label: row.name })
+                          }
+                        >
+                          Delete permanently
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 ) : (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -369,11 +451,16 @@ export function SubscriptionTable({
                         Duplicate
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => handleArchive(row)}>
+                        Archive
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
-                        onSelect={() => handleArchive(row)}
+                        onSelect={() =>
+                          setPendingDelete({ ids: [row.id], label: row.name })
+                        }
                       >
-                        Archive
+                        Delete permanently
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -383,6 +470,39 @@ export function SubscriptionTable({
           ))}
         </tbody>
       </table>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently removing{" "}
+              <span className="text-text font-medium">
+                {pendingDelete?.label}
+              </span>{" "}
+              also deletes its reminder history, and can&apos;t be undone. To
+              keep it recoverable, archive it instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline" size="sm">
+                Cancel
+              </Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="destructive" size="sm" onClick={confirmDelete}>
+                Delete permanently
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

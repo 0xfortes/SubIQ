@@ -3,7 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // All specs share one seeded DB workspace (global-setup), and settings.spec
+  // mutates its currency/timezone — so files must run serially, not just tests
+  // within a file. Without this, parallel workers race on the shared workspace.
   fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: "list",

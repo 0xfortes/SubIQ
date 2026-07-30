@@ -4,7 +4,12 @@ import {
   SubscriptionStatus,
 } from "@/generated/prisma/enums";
 import { formatDay } from "@/lib/dates";
-import { formatMoney, monthlyEquivalentMinor } from "@/lib/money";
+import {
+  convertMinor,
+  formatMoney,
+  monthlyEquivalentInBaseMinor,
+  monthlyEquivalentMinor,
+} from "@/lib/money";
 import { cycleSuffix } from "@/lib/recurrence";
 
 /**
@@ -100,16 +105,10 @@ function duplicateInsights(
       (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
     );
 
-    const cheapestMonthly = group.members
-      .filter((sub) => sub.currency === defaultCurrency)
-      .reduce<number | null>((min, sub) => {
-        const monthly = monthlyEquivalentMinor(
-          sub.amountMinor,
-          sub.interval,
-          sub.intervalCount,
-        );
-        return min === null ? monthly : Math.min(min, monthly);
-      }, null);
+    const cheapestMonthly = group.members.reduce<number | null>((min, sub) => {
+      const monthly = monthlyEquivalentInBaseMinor(sub, defaultCurrency);
+      return min === null ? monthly : Math.min(min, monthly);
+    }, null);
 
     const names = nameList(group.members.map((sub) => sub.name));
     const verb = group.members.length === 2 ? "both bill" : "all bill";
@@ -141,21 +140,27 @@ function annualInsights(
     if (
       sub.status !== SubscriptionStatus.ACTIVE ||
       sub.interval !== BillingInterval.MONTH ||
-      sub.intervalCount !== 1 ||
-      sub.currency !== defaultCurrency ||
-      sub.amountMinor < ANNUAL_MIN_MONTHLY_MINOR
+      sub.intervalCount !== 1
     ) {
       continue;
     }
+    // Convert the monthly charge into the base currency so the threshold,
+    // the copy, and the saving are all denominated the same way.
+    const monthlyBaseMinor = convertMinor(
+      sub.amountMinor,
+      sub.currency,
+      defaultCurrency,
+    );
+    if (monthlyBaseMinor < ANNUAL_MIN_MONTHLY_MINOR) continue;
 
     // "~2 months free" estimate: exact integer per-year saving, then
     // normalized to the monthly-equivalent unit contract above.
-    const yearlySavingsMinor = ANNUAL_FREE_MONTHS * sub.amountMinor;
+    const yearlySavingsMinor = ANNUAL_FREE_MONTHS * monthlyBaseMinor;
     candidates.push({
       type: InsightType.ANNUAL_SAVINGS,
       dedupeKey: `annual:${sub.id}`,
       title: `Switch ${sub.name} to annual`,
-      body: `You pay ${formatMoney(sub.amountMinor, sub.currency)}/mo. Annual plans typically include ~2 months free — about ${formatMoney(yearlySavingsMinor, sub.currency)} back a year.`,
+      body: `You pay ${formatMoney(monthlyBaseMinor, defaultCurrency)}/mo. Annual plans typically include ~2 months free — about ${formatMoney(yearlySavingsMinor, defaultCurrency)} back a year.`,
       savingsMinor: monthlyEquivalentMinor(
         yearlySavingsMinor,
         BillingInterval.YEAR,
@@ -163,7 +168,7 @@ function annualInsights(
       ),
       currency: defaultCurrency,
       subscriptionIds: [sub.id],
-      data: { v: 1, monthlyMinor: sub.amountMinor, yearlySavingsMinor },
+      data: { v: 1, monthlyMinor: monthlyBaseMinor, yearlySavingsMinor },
     });
   }
   return candidates;
@@ -172,6 +177,7 @@ function annualInsights(
 function trialInsights(
   subscriptions: RuleSubscription[],
   now: Date,
+  defaultCurrency: string,
 ): InsightCandidate[] {
   const windowEnd = now.getTime() + TRIAL_WINDOW_DAYS * DAY_MS;
   const candidates: InsightCandidate[] = [];
@@ -191,7 +197,7 @@ function trialInsights(
       // a fresh insight even if the old one was dismissed.
       dedupeKey: `trial:${sub.id}:${sub.trialEndsAt.toISOString().slice(0, 10)}`,
       title: `${sub.name} trial ends ${formatDay(sub.trialEndsAt, now)}`,
-      body: `Converts to ${formatMoney(sub.amountMinor, sub.currency)}${cycleSuffix(sub.interval, sub.intervalCount)} unless cancelled.`,
+      body: `Converts to ${formatMoney(convertMinor(sub.amountMinor, sub.currency, defaultCurrency), defaultCurrency)}${cycleSuffix(sub.interval, sub.intervalCount)} unless cancelled.`,
       // A deadline, not a saving — keeps the "recoverable" sum honest.
       savingsMinor: null,
       currency: null,
@@ -216,7 +222,7 @@ export function computeInsights(args: {
   return [
     ...duplicateInsights(subscriptions, defaultCurrency),
     ...annualInsights(subscriptions, defaultCurrency),
-    ...trialInsights(subscriptions, now),
+    ...trialInsights(subscriptions, now, defaultCurrency),
   ].sort((a, b) => a.dedupeKey.localeCompare(b.dedupeKey));
 }
 
@@ -228,9 +234,8 @@ export function recoverableTotalMinor(
   insights: { savingsMinor: number | null; currency: string | null }[],
   currency: string,
 ): number {
-  return insights.reduce(
-    (sum, insight) =>
-      insight.currency === currency ? sum + (insight.savingsMinor ?? 0) : sum,
-    0,
-  );
+  return insights.reduce((sum, insight) => {
+    if (insight.savingsMinor === null || insight.currency === null) return sum;
+    return sum + convertMinor(insight.savingsMinor, insight.currency, currency);
+  }, 0);
 }

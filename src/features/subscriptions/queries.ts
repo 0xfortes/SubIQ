@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { monthlyEquivalentMinor } from "@/lib/money";
+import { monthlyEquivalentInBaseMinor } from "@/lib/money";
 import type { Prisma } from "@/generated/prisma/client";
 import { SubscriptionStatus } from "@/generated/prisma/enums";
 import type { ListFilters } from "./schemas";
@@ -55,14 +55,18 @@ export async function listSubscriptions(
         : [{ nextRenewalAt: "asc" }, { name: "asc" }],
   });
 
-  // Cost sorting uses the monthly equivalent, which lives in JS by design
-  // (lib/money is the single home of that math). Personal-scale lists —
-  // sorting in memory is fine and honest.
+  // Cost sorting uses the monthly equivalent in the workspace base currency
+  // (lib/money is the single home of that math), so mixed-currency lists rank
+  // correctly. Personal-scale lists — sorting in memory is fine and honest.
   if (filters.sort === "cost") {
+    const { defaultCurrency } = await db.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { defaultCurrency: true },
+    });
     rows.sort(
       (a, b) =>
-        monthlyEquivalentMinor(b.amountMinor, b.interval, b.intervalCount) -
-        monthlyEquivalentMinor(a.amountMinor, a.interval, a.intervalCount),
+        monthlyEquivalentInBaseMinor(b, defaultCurrency) -
+        monthlyEquivalentInBaseMinor(a, defaultCurrency),
     );
   }
   return rows;

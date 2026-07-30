@@ -1,10 +1,10 @@
 import { formatMoney } from "@/lib/money";
+import { CategoryMark } from "@/components/ui/category-mark";
 import type { CategorySlice } from "../lib";
 
 interface CategoryBreakdownProps {
   slices: CategorySlice[];
   currency: string;
-  foreignCount: number;
 }
 
 /** Share of monthly spend per category as a direct-labeled bar list —
@@ -12,7 +12,6 @@ interface CategoryBreakdownProps {
 export function CategoryBreakdown({
   slices,
   currency,
-  foreignCount,
 }: CategoryBreakdownProps) {
   return (
     <section
@@ -39,11 +38,7 @@ export function CategoryBreakdown({
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span
-                      aria-hidden
-                      className="size-[7px] shrink-0 rounded-[2px]"
-                      style={{ backgroundColor: hue }}
-                    />
+                    <CategoryMark color={hue} />
                     <span className="text-text truncate text-[12.5px]">
                       {slice.name}
                     </span>
@@ -75,12 +70,6 @@ export function CategoryBreakdown({
           })}
         </ul>
       )}
-
-      {foreignCount > 0 ? (
-        <p className="text-faint mt-3 text-[10.5px]">
-          {foreignCount} in other currencies excluded
-        </p>
-      ) : null}
     </section>
   );
 }

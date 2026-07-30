@@ -3,7 +3,6 @@ import { BillingInterval, SubscriptionStatus } from "@/generated/prisma/enums";
 import {
   categoryBreakdown,
   costLeaderboard,
-  foreignBillingCount,
   projectionByMonth,
   UNCATEGORIZED_ID,
   type AnalyticsSub,
@@ -33,18 +32,6 @@ function sub(overrides: Partial<AnalyticsSub> = {}): AnalyticsSub {
 // Fixed reference: the user's zoned today is 2026-07-27, so the projection
 // window is Aug 2026 – Jul 2027.
 const TODAY = new Date(Date.UTC(2026, 6, 27));
-
-describe("foreignBillingCount", () => {
-  it("counts only billing subs in other currencies", () => {
-    const subs = [
-      sub(),
-      sub({ currency: "EUR" }),
-      sub({ currency: "EUR", status: SubscriptionStatus.CANCELLED }),
-      sub({ currency: "GBP", status: SubscriptionStatus.TRIAL }),
-    ];
-    expect(foreignBillingCount(subs, "USD")).toBe(2);
-  });
-});
 
 describe("categoryBreakdown", () => {
   it("groups monthly equivalents by category, sorted descending", () => {
@@ -80,16 +67,29 @@ describe("categoryBreakdown", () => {
     });
   });
 
-  it("includes trials, excludes paused/cancelled and foreign currencies", () => {
+  it("includes trials, excludes paused and cancelled", () => {
     const subs = [
       sub({ status: SubscriptionStatus.TRIAL, amountMinor: 500 }),
       sub({ status: SubscriptionStatus.PAUSED }),
       sub({ status: SubscriptionStatus.CANCELLED }),
-      sub({ currency: "EUR" }),
     ];
     const slices = categoryBreakdown(subs, "USD");
     expect(slices).toHaveLength(1);
     expect(slices[0]).toMatchObject({ monthlyMinor: 500, count: 1, share: 1 });
+  });
+
+  it("converts foreign-currency subs into the base instead of excluding", () => {
+    // €10/mo joins the $15/mo sub after conversion (~$10.87).
+    const slices = categoryBreakdown(
+      [
+        sub({ category: DESIGN, amountMinor: 1500 }),
+        sub({ category: DESIGN, currency: "EUR", amountMinor: 1000 }),
+      ],
+      "USD",
+    );
+    expect(slices).toHaveLength(1);
+    expect(slices[0]!.count).toBe(2);
+    expect(slices[0]!.monthlyMinor).toBe(1500 + 1087);
   });
 
   it("returns [] for empty input and never yields NaN shares", () => {
@@ -193,13 +193,21 @@ describe("projectionByMonth", () => {
     expect(firstOfMonth[0]).toMatchObject({ key: "2026-08", count: 1 });
   });
 
-  it("excludes foreign-currency and non-billing subs", () => {
-    const buckets = projectionByMonth(
-      [sub({ currency: "EUR" }), sub({ status: SubscriptionStatus.PAUSED })],
+  it("excludes non-billing subs but converts foreign-currency ones", () => {
+    const paused = projectionByMonth(
+      [sub({ status: SubscriptionStatus.PAUSED })],
       "USD",
       TODAY,
     );
-    expect(buckets.every((b) => b.count === 0)).toBe(true);
+    expect(paused.every((b) => b.count === 0)).toBe(true);
+    // A foreign-currency billing sub is converted, not dropped.
+    const withForeign = projectionByMonth(
+      [sub({ currency: "EUR", amountMinor: 1000 })],
+      "USD",
+      TODAY,
+    );
+    expect(withForeign.every((b) => b.count === 1)).toBe(true);
+    expect(withForeign[0]!.totalMinor).toBe(1087);
   });
 });
 
@@ -243,12 +251,21 @@ describe("costLeaderboard", () => {
     });
   });
 
-  it("excludes foreign and non-billing subs; empty input → []", () => {
+  it("excludes non-billing subs but includes foreign, converted; empty → []", () => {
     expect(costLeaderboard([], "USD")).toEqual([]);
     const rows = costLeaderboard(
-      [sub({ currency: "EUR" }), sub({ status: SubscriptionStatus.CANCELLED })],
+      [
+        sub({ currency: "EUR", amountMinor: 1000 }),
+        sub({ status: SubscriptionStatus.CANCELLED }),
+      ],
       "USD",
     );
-    expect(rows).toEqual([]);
+    expect(rows).toHaveLength(1);
+    // €10/mo → ~$10.87 in both the raw and monthly figures.
+    expect(rows[0]).toMatchObject({
+      amountMinor: 1087,
+      currency: "USD",
+      monthlyMinor: 1087,
+    });
   });
 });

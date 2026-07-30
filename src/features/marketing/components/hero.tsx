@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "./reveal";
 import { RulerDemo } from "./ruler-demo";
@@ -17,29 +18,34 @@ export function Hero() {
       />
 
       <div className="max-w-content relative mx-auto flex flex-col items-center text-center">
-        <span className="marketing-rise rounded-pill border-line bg-surface text-muted inline-flex items-center gap-1.5 border px-3 py-1 text-[11px] tracking-wide">
-          <span className="rounded-pill bg-mint size-1.5" aria-hidden />
-          Subscription intelligence
-        </span>
-
-        <h1 className="marketing-rise text-text mt-6 max-w-3xl text-[40px] leading-[1.04] font-medium tracking-[-0.025em] [animation-delay:90ms] sm:text-[64px]">
-          Know where your money{" "}
-          <em className="text-accent font-normal italic">quietly</em> goes.
+        <h1 className="marketing-rise text-text max-w-3xl text-[40px] leading-[1.04] font-medium tracking-[-0.025em] sm:text-[64px]">
+          Every subscription you pay for, in{" "}
+          <em className="text-accent font-normal italic">one place</em>.
         </h1>
 
         <p className="marketing-rise text-muted mt-6 max-w-xl text-[15px] leading-relaxed [animation-delay:180ms] sm:text-base">
-          SubIQ tracks every subscription, forecasts every renewal, and surfaces
-          the savings you didn&apos;t know existed — in one calm dashboard.
+          Add what you&apos;re subscribed to. SubIQ tracks every renewal and
+          adds up what you spend each month.
         </p>
 
-        <div className="marketing-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:270ms]">
+        <div className="marketing-rise mt-9 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 [animation-delay:270ms]">
           <Button asChild size="lg" className="px-5">
             <Link href="#get-started">Start free</Link>
           </Button>
-          <Button asChild variant="outline" size="lg" className="px-5">
-            <Link href="#product">See how it works</Link>
-          </Button>
+          <Link
+            href="#product"
+            className="group text-muted hover:text-text focus-visible:outline-accent inline-flex items-center gap-1 rounded-sm text-[14px] transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            See how it works
+            <ArrowRight
+              size={15}
+              strokeWidth={1.75}
+              className="transition-transform duration-150 ease-out group-hover:translate-x-0.5"
+            />
+          </Link>
         </div>
+        {/* Sentinel: once it scrolls under the sticky header, the nav reveals its CTA. */}
+        <div id="hero-cta-sentinel" aria-hidden className="h-px w-full" />
 
         <div className="marketing-rise mt-20 w-full max-w-4xl [animation-delay:420ms]">
           <Reveal>

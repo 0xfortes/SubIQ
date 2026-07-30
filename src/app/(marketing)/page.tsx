@@ -3,19 +3,21 @@ import {
   FeatureSections,
   Hero,
   HowItWorks,
+  ProductPreview,
   SignupCta,
 } from "@/features/marketing";
 
 export const metadata: Metadata = {
-  title: "SubIQ — Know where your money quietly goes",
+  title: "SubIQ: track your subscriptions and renewals",
   description:
-    "Track every subscription, forecast every renewal, and surface the savings you didn't know existed. Free, no card, 30 seconds.",
+    "SubIQ tracks what you're subscribed to and reminds you before each renewal charges. See your monthly total and what's coming, in one place. Free to start, no card.",
 };
 
 export default function LandingPage() {
   return (
     <>
       <Hero />
+      <ProductPreview />
       <FeatureSections />
       <HowItWorks />
       <SignupCta />

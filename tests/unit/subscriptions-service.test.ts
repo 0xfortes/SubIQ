@@ -7,6 +7,7 @@ const dbMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+    deleteMany: vi.fn(),
   },
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 import {
   archiveSubscriptions,
   createSubscription,
+  deleteSubscriptions,
   duplicateSubscription,
   NotFoundError,
   setFavorite,
@@ -116,6 +118,20 @@ describe("archiveSubscriptions", () => {
     expect(args.where.workspaceId).toBe(WORKSPACE);
     expect(args.where.deletedAt).toBeNull();
     expect(args.data.deletedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("deleteSubscriptions", () => {
+  it("hard-deletes workspace-owned rows regardless of archived state", async () => {
+    dbMock.subscription.deleteMany.mockResolvedValue({ count: 2 });
+    const count = await deleteSubscriptions(WORKSPACE, [SUB_ID, "other"]);
+    expect(count).toBe(2);
+
+    const args = dbMock.subscription.deleteMany.mock.calls[0]?.[0];
+    expect(args.where.workspaceId).toBe(WORKSPACE);
+    expect(args.where.id).toEqual({ in: [SUB_ID, "other"] });
+    // No deletedAt filter — delete applies to live and archived rows alike.
+    expect(args.where.deletedAt).toBeUndefined();
   });
 });
 

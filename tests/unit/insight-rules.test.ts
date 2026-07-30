@@ -102,13 +102,14 @@ describe("DUPLICATE_CATEGORY", () => {
     expect(insight!.body).toContain("A, B, C, and 2 more all bill");
   });
 
-  it("yields null savings when no group member is in the default currency", () => {
+  it("converts foreign-currency members for the savings figure", () => {
+    // Two €10/mo subs → cheapest converts to $10.87/mo in the base currency.
     const a = sub({ currency: "EUR", category: ENTERTAINMENT });
     const b = sub({ currency: "EUR", category: ENTERTAINMENT });
     const [insight] = ofType([a, b], InsightType.DUPLICATE_CATEGORY);
-    expect(insight!.savingsMinor).toBeNull();
-    expect(insight!.currency).toBeNull();
-    expect(insight!.body).toContain("Worth keeping just one.");
+    expect(insight!.savingsMinor).toBe(1087);
+    expect(insight!.currency).toBe("USD");
+    expect(insight!.body).toContain("$10.87");
   });
 
   it("normalizes mixed cadences to monthly equivalents for the savings figure", () => {
@@ -151,9 +152,13 @@ describe("ANNUAL_SAVINGS", () => {
     ).toEqual([]);
   });
 
-  it("skips foreign-currency subscriptions (savings must be summable)", () => {
+  it("converts foreign-currency subscriptions into the base currency", () => {
+    // €10/mo → ~$10.87/mo, above the threshold, denominated in the base.
     const eur = sub({ currency: "EUR" });
-    expect(ofType([eur], InsightType.ANNUAL_SAVINGS)).toEqual([]);
+    const [insight] = ofType([eur], InsightType.ANNUAL_SAVINGS);
+    expect(insight).toBeDefined();
+    expect(insight!.currency).toBe("USD");
+    expect(insight!.body).toContain("$10.87");
   });
 });
 
@@ -215,7 +220,8 @@ describe("computeInsights determinism", () => {
 });
 
 describe("recoverableTotalMinor", () => {
-  it("sums only same-currency savings", () => {
+  it("converts each saving into the display currency", () => {
+    // €5 → ~$5.43, added to the $10.00; the null saving is skipped.
     const total = recoverableTotalMinor(
       [
         { savingsMinor: 1000, currency: "USD" },
@@ -224,6 +230,6 @@ describe("recoverableTotalMinor", () => {
       ],
       "USD",
     );
-    expect(total).toBe(1000);
+    expect(total).toBe(1543);
   });
 });

@@ -90,9 +90,9 @@ test("sort control drives the sort URL param and row order", async ({
   const sorted = [...names].sort((a, b) => a.localeCompare(b));
   expect(names).toEqual(sorted);
 
-  // Default sort removes the param.
+  // Default sort (cost) removes the param.
   await page.getByRole("combobox", { name: "Sort subscriptions" }).click();
-  await page.getByRole("option", { name: "Renewal date" }).click();
+  await page.getByRole("option", { name: "Cost" }).click();
   await expect(page).not.toHaveURL(/sort=/);
 });
 
@@ -111,6 +111,32 @@ test("bulk selection archives multiple rows with undo", async ({ page }) => {
 
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.locator("tbody tr")).toHaveCount(rowCount);
+});
+
+test("delete permanently removes a subscription for good", async ({ page }) => {
+  const name = `E2E Sub ${Date.now()}-del`;
+  await page.goto("/subscriptions");
+
+  await page.getByRole("button", { name: "Add subscription" }).click();
+  await page.getByLabel("Service").fill(name);
+  await page.getByLabel("Cost").fill("5.00");
+  await page.getByRole("button", { name: "Add subscription" }).last().click();
+  const row = page.getByRole("row", { name: new RegExp(name) });
+  await expect(row).toBeVisible();
+
+  // Delete needs an explicit confirm (irreversible — no undo toast).
+  await row.getByRole("button", { name: `Actions for ${name}` }).click();
+  await page.getByRole("menuitem", { name: "Delete permanently" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Delete permanently" })
+    .click();
+  await expect(row).toBeHidden();
+  await expect(page.getByText(`Deleted ${name}`)).toBeVisible();
+
+  // Hard delete, not archive: it is absent from the archived view too.
+  await page.getByRole("button", { name: "Archived" }).click();
+  await expect(page.getByRole("row", { name: new RegExp(name) })).toBeHidden();
 });
 
 test("unauthenticated users are redirected to sign-in", async ({ browser }) => {

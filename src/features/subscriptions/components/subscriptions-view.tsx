@@ -104,6 +104,7 @@ export function SubscriptionsView({
         emptyMessage={emptyMessage(filters)}
         archived={filters.status === "archived"}
         timeZone={timeZone}
+        defaultCurrency={defaultCurrency}
       />
 
       <SubscriptionFormDialog

@@ -24,9 +24,7 @@ export function KpiRow({
         subline={
           !hasSpend
             ? "nothing tracked yet"
-            : kpis.foreignCurrencyCount > 0
-              ? `across ${kpis.billingCount} subscriptions · ${kpis.foreignCurrencyCount} in other currencies excluded`
-              : `across ${kpis.billingCount} subscription${kpis.billingCount === 1 ? "" : "s"}`
+            : `across ${kpis.billingCount} subscription${kpis.billingCount === 1 ? "" : "s"}`
         }
       />
       <StatCard

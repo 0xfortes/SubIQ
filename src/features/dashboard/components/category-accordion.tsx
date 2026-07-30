@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { cycleSuffix } from "@/lib/recurrence";
+import { CategoryMark } from "@/components/ui/category-mark";
 import type { AccordionCategory } from "../queries";
 
 const OPEN_STATE_KEY = "subiq:accordion-open";
@@ -139,19 +139,10 @@ export function CategoryAccordion({
                     isOpen && "rotate-90",
                   )}
                 />
-                <span
-                  aria-hidden
-                  className="size-[7px] shrink-0 rounded-[2px]"
-                  style={{ backgroundColor: category.color }}
-                />
+                <CategoryMark color={category.color} />
                 <span className="min-w-0 flex-1 truncate">{category.name}</span>
                 <span className="font-data text-faint text-[11px]">
-                  {formatMoney(
-                    category.monthlyTotalMinor,
-                    category.currency,
-                    undefined,
-                    { whole: true },
-                  )}
+                  {formatMoney(category.monthlyTotalMinor, category.currency)}
                 </span>
               </button>
 
@@ -166,8 +157,7 @@ export function CategoryAccordion({
                         {child.name}
                       </span>
                       <span className="font-data text-faint shrink-0">
-                        {formatMoney(child.amountMinor, child.currency)}
-                        {cycleSuffix(child.interval, child.intervalCount)}
+                        {formatMoney(child.monthlyMinor, category.currency)}/mo
                       </span>
                     </li>
                   ))}

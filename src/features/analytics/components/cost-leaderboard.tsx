@@ -1,4 +1,4 @@
-import { ServiceAvatar } from "@/features/subscriptions";
+import { ServiceAvatar } from "@/components/ui/service-avatar";
 import { formatMoney } from "@/lib/money";
 import { LEADERBOARD_LIMIT, type LeaderboardRow } from "../lib";
 

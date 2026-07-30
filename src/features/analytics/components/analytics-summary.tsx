@@ -8,21 +8,17 @@ import type { AnalyticsData } from "../queries";
 export function AnalyticsSummary({ data }: { data: AnalyticsData }) {
   const {
     currency,
-    includedCount,
-    foreignCount,
+    billingCount,
     annualRunRateMinor,
     projection,
     projectedTotalMinor,
     peakMonth,
   } = data;
-  const hasMoney = includedCount > 0;
+  const hasMoney = billingCount > 0;
   const range =
     projection.length > 0
       ? `${projection[0]!.longLabel} – ${projection[projection.length - 1]!.longLabel}`
       : "";
-
-  const excludedSuffix =
-    foreignCount > 0 ? ` · ${foreignCount} in other currencies excluded` : "";
 
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -32,10 +28,8 @@ export function AnalyticsSummary({ data }: { data: AnalyticsData }) {
         figure={hasMoney ? formatMoney(annualRunRateMinor, currency) : "—"}
         subline={
           hasMoney
-            ? `monthly spend × 12, across ${includedCount} subscription${includedCount === 1 ? "" : "s"}${excludedSuffix}`
-            : foreignCount > 0
-              ? `all ${foreignCount} subscriptions are in other currencies`
-              : "nothing tracked yet"
+            ? `monthly spend × 12, across ${billingCount} subscription${billingCount === 1 ? "" : "s"}`
+            : "nothing tracked yet"
         }
       />
       <StatCard

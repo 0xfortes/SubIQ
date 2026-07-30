@@ -59,7 +59,7 @@ export function WorkspaceSettingsForm({
         </Select>
         <p className="text-faint text-[11px]">
           Totals and insights are recalculated in the new currency.
-          Subscriptions in other currencies are excluded from totals.
+          Subscriptions in other currencies are converted at current rates.
         </p>
       </div>
       <div className="flex justify-end">

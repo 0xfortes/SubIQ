@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Footer } from "@/features/marketing";
+import { Footer, NavStartFree } from "@/features/marketing";
 
 export default async function MarketingLayout({
   children,
@@ -16,14 +16,15 @@ export default async function MarketingLayout({
         <div className="max-w-content mx-auto flex h-14 items-center justify-between px-4">
           <Link
             href="/"
-            className="focus-visible:outline-accent flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
+            aria-label="SubIQ home"
+            className="focus-visible:outline-accent flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <div className="bg-accent text-on-accent flex size-6 items-center justify-center rounded-md text-[11px] font-semibold">
+            <div
+              aria-hidden
+              className="bg-accent text-on-accent flex size-6 items-center justify-center rounded-md text-[11px] font-semibold"
+            >
               S
             </div>
-            <span className="text-text text-[13px] font-medium tracking-tight">
-              SubIQ
-            </span>
           </Link>
           <nav className="flex items-center gap-2">
             {session?.user ? (
@@ -32,11 +33,9 @@ export default async function MarketingLayout({
               </Button>
             ) : (
               <>
+                <NavStartFree />
                 <Button asChild variant="ghost" size="sm">
-                  <Link href="/signin">Sign in</Link>
-                </Button>
-                <Button asChild size="sm">
-                  <Link href="#get-started">Start free</Link>
+                  <Link href="/signin">Log in</Link>
                 </Button>
               </>
             )}

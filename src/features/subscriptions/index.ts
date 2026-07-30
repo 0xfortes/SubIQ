@@ -1,6 +1,5 @@
 export { SubscriptionsView } from "./components/subscriptions-view";
 export { StatusPill } from "./components/status-pill";
-export { ServiceAvatar } from "./components/service-avatar";
 export { listSubscriptions, listCategories } from "./queries";
 export type { SubscriptionRow } from "./queries";
 export { listFiltersSchema } from "./schemas";

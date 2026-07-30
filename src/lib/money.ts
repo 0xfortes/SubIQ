@@ -1,8 +1,12 @@
 import { BillingInterval } from "@/generated/prisma/enums";
+import { USD_RATES, type RateCurrency } from "@/lib/exchange-rates";
 
 /**
  * All money handling lives here. Amounts are integer minor units (cents)
  * with an ISO 4217 currency code — never floats, never Decimal math in JS.
+ * Cross-currency conversion (convertMinor) and monthly normalization
+ * (monthlyEquivalentMinor / ...InBaseMinor) both live here so aggregation
+ * math has exactly one home.
  */
 
 /** Currencies offered in workspace settings and the subscription form. */
@@ -120,4 +124,53 @@ export function monthlyEquivalentMinor(
     );
   }
   return Math.round((amountMinor * MONTHLY_FACTOR[interval]) / intervalCount);
+}
+
+/**
+ * Convert a minor-unit amount from one currency to another using the static
+ * USD-anchored rate table. Goes through major units so currencies with
+ * different minor-unit exponents (USD cents ↔ JPY whole yen) convert
+ * correctly, then rounds back to the target's minor units.
+ *
+ * Same-currency is an exact identity; an unknown currency (not in the rate
+ * table) falls back to identity rather than producing NaN.
+ */
+export function convertMinor(
+  amountMinor: number,
+  from: string,
+  to: string,
+): number {
+  if (!Number.isInteger(amountMinor)) {
+    throw new Error(`amountMinor must be an integer, got ${amountMinor}`);
+  }
+  if (from === to) return amountMinor;
+  const rateFrom = USD_RATES[from as RateCurrency];
+  const rateTo = USD_RATES[to as RateCurrency];
+  if (rateFrom === undefined || rateTo === undefined) return amountMinor;
+
+  const fromMajor = amountMinor / 10 ** fractionDigits(from, "en-US");
+  const toMajor = (fromMajor * rateTo) / rateFrom;
+  return Math.round(toMajor * 10 ** fractionDigits(to, "en-US"));
+}
+
+/**
+ * A subscription's monthly-equivalent spend expressed in the workspace base
+ * currency: convert the charge into the base, then normalize the cadence.
+ * THE one place aggregations turn a foreign-currency subscription into a
+ * comparable base-currency monthly figure.
+ */
+export function monthlyEquivalentInBaseMinor(
+  sub: {
+    amountMinor: number;
+    currency: string;
+    interval: BillingInterval;
+    intervalCount: number;
+  },
+  base: string,
+): number {
+  return monthlyEquivalentMinor(
+    convertMinor(sub.amountMinor, sub.currency, base),
+    sub.interval,
+    sub.intervalCount,
+  );
 }

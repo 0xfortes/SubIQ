@@ -1,30 +1,20 @@
 import { fetchWorkspaceSubs } from "@/features/dashboard";
 import { todayInZone } from "@/lib/dates";
-import { monthlyEquivalentMinor } from "@/lib/money";
+import { monthlyEquivalentInBaseMinor } from "@/lib/money";
+import { BILLING_STATUSES } from "@/lib/subscription-status";
 import {
   categoryBreakdown,
   costLeaderboard,
-  foreignBillingCount,
   projectionByMonth,
   type CategorySlice,
   type LeaderboardRow,
   type ProjectionMonth,
 } from "./lib";
-import { SubscriptionStatus } from "@/generated/prisma/enums";
-
-/** Keep in sync with dashboard/queries.ts BILLING. */
-const BILLING = new Set<SubscriptionStatus>([
-  SubscriptionStatus.ACTIVE,
-  SubscriptionStatus.TRIAL,
-]);
 
 export interface AnalyticsData {
   currency: string;
-  /** All billing subs, any currency. */
+  /** All billing subs; money figures cover every currency (converted). */
   billingCount: number;
-  /** Billing subs in the default currency — what the money figures cover. */
-  includedCount: number;
-  foreignCount: number;
   monthlyTotalMinor: number;
   annualRunRateMinor: number;
   projection: ProjectionMonth[];
@@ -44,12 +34,9 @@ export async function getAnalyticsData(
   const currency = workspace.defaultCurrency;
   const todayStart = todayInZone(timeZone);
 
-  const billing = subs.filter((sub) => BILLING.has(sub.status));
-  const includedSubs = billing.filter((sub) => sub.currency === currency);
-  const monthlyTotalMinor = includedSubs.reduce(
-    (sum, sub) =>
-      sum +
-      monthlyEquivalentMinor(sub.amountMinor, sub.interval, sub.intervalCount),
+  const billing = subs.filter((sub) => BILLING_STATUSES.has(sub.status));
+  const monthlyTotalMinor = billing.reduce(
+    (sum, sub) => sum + monthlyEquivalentInBaseMinor(sub, currency),
     0,
   );
 
@@ -69,8 +56,6 @@ export async function getAnalyticsData(
   return {
     currency,
     billingCount: billing.length,
-    includedCount: includedSubs.length,
-    foreignCount: foreignBillingCount(subs, currency),
     monthlyTotalMinor,
     annualRunRateMinor: monthlyTotalMinor * 12,
     projection,

@@ -42,11 +42,7 @@ export default async function AnalyticsPage() {
       <AnalyticsSummary data={data} />
       <ProjectionChart data={data.projection} currency={data.currency} />
       <div className="grid gap-3 min-[1020px]:grid-cols-[1fr_1.4fr]">
-        <CategoryBreakdown
-          slices={data.slices}
-          currency={data.currency}
-          foreignCount={data.foreignCount}
-        />
+        <CategoryBreakdown slices={data.slices} currency={data.currency} />
         <CostLeaderboard rows={data.leaderboard} currency={data.currency} />
       </div>
     </div>

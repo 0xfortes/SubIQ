@@ -32,7 +32,7 @@ const SORT_LABELS: Record<SortOption, string> = {
   cost: "Cost",
 };
 
-const DEFAULT_SORT: SortOption = "renewal";
+const DEFAULT_SORT: SortOption = "cost";
 
 const SEARCH_DEBOUNCE_MS = 250;
 

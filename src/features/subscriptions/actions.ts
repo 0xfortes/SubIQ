@@ -15,6 +15,7 @@ import {
 import {
   archiveSubscriptions,
   createSubscription,
+  deleteSubscriptions,
   duplicateSubscription,
   NotFoundError,
   restoreSubscriptions,
@@ -90,6 +91,15 @@ export async function restoreSubscriptionsAction(input: unknown) {
   if (!parsed.success) return err(GENERIC_ERROR);
   return runMutation(async (workspaceId) => {
     const count = await restoreSubscriptions(workspaceId, parsed.data.ids);
+    return { count };
+  });
+}
+
+export async function deleteSubscriptionsAction(input: unknown) {
+  const parsed = subscriptionIdsSchema.safeParse(input);
+  if (!parsed.success) return err(GENERIC_ERROR);
+  return runMutation(async (workspaceId) => {
+    const count = await deleteSubscriptions(workspaceId, parsed.data.ids);
     return { count };
   });
 }
