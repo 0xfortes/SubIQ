@@ -11,16 +11,20 @@ Quality bar: Linear / Stripe / Vercel. Fast, minimal, intentional, accessible.
 
 ---
 
-## Status (last updated 2026-07-27 — keep this section current)
+## Status (last updated 2026-07-30 — keep this section current)
 
-**All five V1 scope items are BUILT and verified** (126 unit tests, 11/11 e2e,
-typecheck clean; lint has one pre-existing react-hook-form warning):
+**All five V1 scope items are BUILT and verified** (134 unit tests, 16/16 e2e,
+typecheck clean; lint has one pre-existing react-hook-form warning). Everything
+through the post-V1 work below is **committed** (latest: `821db26`).
 
 1. ✅ Auth (magic link + optional OAuth), personal workspace auto-created.
    Magic-link submit redirects to `/check-email` from the action itself
    (`features/auth/actions.ts`), not via Auth.js verify-request pages.
-2. ✅ Subscriptions CRUD incl. sort select, bulk select/archive with undo,
-   and an "Archived" chip view with per-row Restore (all URL-driven).
+2. ✅ Subscriptions CRUD incl. sort select (default **cost**, matching the
+   sidebar order), bulk select/archive with undo, an "Archived" chip view with
+   per-row Restore (all URL-driven), and **permanent delete** (row + bulk,
+   behind an `AlertDialog` confirm — `deleteSubscriptions` service +
+   `deleteSubscriptionsAction`; `RenewalReminder` cascades, insights self-heal).
 3. ✅ Dashboard per DESIGN.md v3 (KPIs, Renewal Ruler, trend, insights
    panel, table, category accordion scoping via `?category=`).
 4. ✅ Renewal engine: `lib/recurrence.ts` math + nightly cron
@@ -39,10 +43,11 @@ typecheck clean; lint has one pre-existing react-hook-form warning):
    Marketing landing page + route states (loading/error/not-found) done.
 
 **Locked decisions** (expensive to reverse — don't change casually):
-`AiInsight.savingsMinor` is always monthly-equivalent in workspace default
-currency (it gets summed); dedupeKey grammar `duplicate:{categoryId}` /
-`annual:{subId}` / `trial:{subId}:{date}` (format change loses dismissals);
-reminders are at-most-once (ledger row claimed before email).
+`AiInsight.savingsMinor` is always monthly-equivalent in the workspace **base**
+currency (all amounts are FX-converted into it before summing — see Currency
+below); dedupeKey grammar `duplicate:{categoryId}` / `annual:{subId}` /
+`trial:{subId}:{date}` (format change loses dismissals); reminders are
+at-most-once (ledger row claimed before email).
 
 **Also built (post-V1):** `/settings` page (`features/settings/`) — profile
 timezone + workspace default currency, both applied. Load-bearing rule in
@@ -62,15 +67,46 @@ cost leaderboard. Pure aggregations in `features/analytics/lib.ts`
 (now exported from `@/features/dashboard`). `KpiCard` extracted to shared
 `components/ui/stat-card.tsx`.
 
+**Currency conversion (2026-07-30 — supersedes the old "no FX in v1"):** every
+money figure now converts into the workspace **base** currency. Static
+USD-anchored rate table in `lib/exchange-rates.ts` (approximate, hand-maintained,
+**swappable for a live feed / DB-backed rates with zero call-site churn** — all
+FX flows through one function). `lib/money.ts` adds `convertMinor(amountMinor,
+from, to)` (via major units, so JPY/zero-decimal currencies are correct) and
+`monthlyEquivalentInBaseMinor(sub, base)`, the single place a foreign sub becomes
+a comparable base-currency monthly figure. Applied at every aggregation site
+(dashboard KPIs/ruler/trend/accordion, analytics, insights, subscriptions cost
+sort) AND the subscriptions-table Cost column — no more "N in other currencies
+excluded" sublines. Display convention: the **table** shows each sub's converted
+charge + cycle (e.g. €8.28/yr); the **sidebar accordion** shows the
+monthly-equivalent (€0.69/mo) and its children sum **exactly** to a cents-precise
+category total; both are base currency and both sort by monthly-equivalent desc,
+so table order matches sidebar order. Store the original `amountMinor`/`currency`
+and convert at read time — never persist converted values. `BILLING` status set
+promoted to `lib/subscription-status.ts` (resolves the old duplication debt).
+
+**Marketing landing redesign (2026-07-29→30):** nav reduced to one primary entry
+point (logo-only brand + a scroll-revealed "Start free" that fades into the nav,
+plus a persistent quiet "Log in"); all copy rewritten to a plain, understated
+voice (no em dashes / hype); the three feature mock-cards replaced by ONE flagship
+`marketing/components/product-preview.tsx` (editorial app mockup) + a redesigned
+hero `ruler-demo.tsx` (category-hued nodes + letter-avatar flags, horizontal
+scroll on mobile). Shared presentational primitives extracted so the preview and
+the real dashboard can't drift: `components/ui/service-avatar.tsx` (ServiceAvatar,
+xs/sm/md) and `components/ui/category-mark.tsx` (CategoryMark), with `fallbackColor`
+moved to `lib/colors.ts`. New shadcn primitives: `components/ui/alert-dialog.tsx`
+and `components/ui/tooltip.tsx`. The real dashboard Renewal Ruler tooltip was
+rebuilt on **Radix Tooltip** (portal + `avoidCollisions`) so it never overflows
+the viewport or overlaps at the edges.
+
 **Not built (placeholder, by explicit scope decision):** command palette
 (⌘K button is a stub). Known debt: no bare index on `nextRenewalAt` for the
 cron's stale scan; single-invocation cron vs serverless timeout; reminder
 recipient = first workspace member; spending trend approximates (no price
 history); timezone dropdown is a plain Select over ~400 IANA zones
 (typeahead works; a Command combobox is future polish); `User.name` shown
-read-only in settings, not editable; the BILLING status set (ACTIVE+TRIAL)
-is duplicated in dashboard + analytics (promote to `src/lib/` when touched
-next); DESIGN.md category hues #C9A0F5 (AI Tools) vs #6FA8F5 (Dev & Infra)
+read-only in settings, not editable; DESIGN.md category hues #C9A0F5 (AI Tools)
+vs #6FA8F5 (Dev & Infra)
 are near-identical under red-green color blindness — mitigated everywhere by
 direct labels, but a palette tweak is worth considering.
 
@@ -103,9 +139,9 @@ Launch order (blockers first):
    — runtime keeps the pooled `DATABASE_URL`. NOT in `package.json` build
    (would break CI/local) and NOT on preview deploys (protects a shared DB).
    `.env.example` documents `DIRECT_URL`.
-4. ← Claude's resume point (needs the USER's accounts). Provision a **SEPARATE,
-   fresh Supabase project for PROD** (the current project is DEV — it holds
-   seed/test data; free tier allows 2 projects). From the NEW prod project set
+4. ← Resume point (needs the USER's accounts). **The fresh PROD Supabase project
+   is already created (DB only)**; the current project stays DEV (holds
+   seed/test data). Remaining: wire Vercel env vars + Resend. From the prod project set
    on Vercel: `DATABASE_URL` = **pooled** (Supabase transaction pooler `:6543`;
    the app uses the `pg` driver adapter, serverless exhausts direct
    connections) and `DIRECT_URL` = direct/session (`:5432`) for migrations
@@ -135,13 +171,16 @@ Tenant isolation does NOT depend on RLS — it's enforced in-app via `workspaceI
 filtering. **DB separation:** current Supabase project stays DEV; PROD gets its
 own fresh project (databases don't merge — a connection string points at one DB;
 `migrate deploy` changes schema only, never deletes rows; seed never runs on
-deploy). Uncommitted working tree (`vercel.json`, `prisma.config.ts`,
-`.env.example`, `subscriptions/service.ts`, `CLAUDE.md`) awaits the user's commit.
+deploy). All work through 2026-07-30 is committed (`821db26`); the DEV Supabase
+project holds the mixed-currency seed data used to verify conversion end-to-end.
 
 Pre-users, non-blocking: cron `maxDuration = 300` needs Vercel Pro (Hobby
 caps at 60s); error observability (Sentry — the one new dependency worth
 arguing for); bare `nextRenewalAt` index migration for the cron stale scan;
-privacy/terms pages; production domain.
+**FX rates are a static hand-maintained table (approximate)** — swap to a live
+feed / DB-backed rates when accuracy matters; privacy/terms pages; production
+domain. E2E runs **serially** (`workers: 1` in `playwright.config.ts`) because
+all specs share one seeded DB workspace.
 
 **Remaining feature work (after launch list):** command palette, editable
 profile name.
@@ -152,7 +191,6 @@ console errors). Before starting dev/e2e, kill orphaned dev servers:
 suspended `next dev` processes hold the `.next/dev` lock and make new ones
 exit with "Another next dev server is already running"
 (`pkill -9 -f "next dev"; pkill -9 -f next-server; rm -rf .next/dev`).
-Nothing is committed yet — the whole repo is untracked files on `main`.
 
 ---
 
@@ -268,7 +306,7 @@ rows; UI only reads them. Prompts live in versioned files, not inline strings.
 
 1. Auth (email magic link + OAuth), personal workspace auto-created.
 2. Subscriptions CRUD: create, edit, archive (soft delete), restore,
-   duplicate, favorites, search/filter/sort, bulk archive.
+   duplicate, favorites, search/filter/sort, bulk archive, permanent delete.
 3. Dashboard (matches the approved v3 prototype — see DESIGN.md): KPI row,
    30-day Renewal Ruler, spending trend, insights panel, subscriptions table,
    and a sidebar category accordion that scopes the entire dashboard.
@@ -295,8 +333,12 @@ email. Mention when a v1 decision would block these; otherwise ignore them.
   thing to retrofit — never skip it.
 - **Money is integers.** `amountMinor Int` (cents) + `currency Char(3)`
   (ISO 4217). Never Float/Decimal math in JS. All formatting through
-  `lib/money.ts` (Intl.NumberFormat). Monthly-equivalent calculations happen
-  in one place only.
+  `lib/money.ts` (Intl.NumberFormat). Monthly-equivalent normalization AND
+  cross-currency conversion both live in `lib/money.ts` (`monthlyEquivalentMinor`
+  / `convertMinor` / `monthlyEquivalentInBaseMinor`); every displayed total is in
+  the workspace base currency (rates in `lib/exchange-rates.ts`, static +
+  swappable). Store the original `amountMinor`/`currency`; convert at read time,
+  never persist converted values.
 - **Recurrence model:** `interval: WEEK|MONTH|YEAR` + `intervalCount Int` +
   `anchorDate`. Next renewal is **computed** (calendar-aware: Jan 31 + 1
   month = Feb 28/29), stored as a denormalized `nextRenewalAt` for querying,

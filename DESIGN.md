@@ -118,15 +118,18 @@ columns.
 
 ### Category accordion (core interaction)
 
-- Each row: chevron (rotates 90° when open) · 7px square category mark ·
-  name · mono monthly total right-aligned.
+- Each row: chevron (rotates 90° when open) · 7px square `CategoryMark` ·
+  name · mono monthly total right-aligned (base currency, cents-precise so it
+  equals the sum of the children).
 - Clicking a row toggles expansion AND selects the category as the
   **dashboard-wide scope**: KPIs recalculate (first KPI relabels to
   "{Category} spend"), Renewal Ruler re-filters, table re-filters,
   breadcrumb shows the scope. Clicking the selected row again deselects.
 - Selected row: `accent-soft` bg + 2px inset accent bar on the left edge.
 - Expanded children: indented list with a 1px left guide line; each child
-  shows service name + mono price with cycle suffix.
+  shows service name + its **monthly-equivalent** spend in the base currency
+  (`/mo`), so the children visibly sum to the header total. (Changed 2026-07-30
+  from per-cycle charge to reconcile with the total.)
 - A "Clear" action appears in the section heading while a scope is active.
 - **State rules:** selected category lives in the URL (`?category=slug`) —
   shareable, back-button works, server can filter. Open/closed accordion
@@ -160,9 +163,10 @@ subline ("nothing due").
   a count flag ("3 · $45.99") that expands on click.
 - Flags within 4 days of today use the amber urgent style.
 - Flags at >86% of track flip to extend leftward so they never clip.
-- Hover/focus: stem brightens to `text`, flag border+text take the
-  service's brand hue, tooltip (surface-2, name + date + cycle) appears
-  above; tooltip flips with edge flags.
+- Hover/focus: stem brightens, flag border takes the service's brand hue, and a
+  tooltip (surface-2, name + amount + date) appears above. Built on **Radix
+  Tooltip** (`components/ui/tooltip.tsx`) — portaled with `avoidCollisions`, so
+  it flips/shifts to stay inside the viewport instead of clipping at the edges.
 - Fully keyboard operable: each stem is a button with a complete aria-label
   ("{name}, {amount}, renews {date}").
 

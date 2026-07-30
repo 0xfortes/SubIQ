@@ -13,6 +13,3 @@ export const updateTimezoneSchema = z.object({
 export const updateCurrencySchema = z.object({
   currency: z.enum(SUPPORTED_CURRENCIES),
 });
-
-export type UpdateTimezoneInput = z.infer<typeof updateTimezoneSchema>;
-export type UpdateCurrencyInput = z.infer<typeof updateCurrencySchema>;
