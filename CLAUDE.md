@@ -13,9 +13,11 @@ Quality bar: Linear / Stripe / Vercel. Fast, minimal, intentional, accessible.
 
 ## Status (last updated 2026-07-30 — keep this section current)
 
-**All five V1 scope items are BUILT and verified** (134 unit tests, 16/16 e2e,
-typecheck clean; lint has one pre-existing react-hook-form warning). Everything
-through the post-V1 work below is **committed** (latest: `821db26`).
+**All five V1 scope items are BUILT and verified** (134 unit tests, 17/17 e2e,
+typecheck clean; lint has one pre-existing react-hook-form warning). Post-V1 work
+is **committed** through `821db26`; the **authenticated home** (see its note
+below) is done + fully verified but still in the working tree, awaiting the
+user's commit.
 
 1. ✅ Auth (magic link + optional OAuth), personal workspace auto-created.
    Magic-link submit redirects to `/check-email` from the action itself
@@ -99,8 +101,34 @@ and `components/ui/tooltip.tsx`. The real dashboard Renewal Ruler tooltip was
 rebuilt on **Radix Tooltip** (portal + `avoidCollisions`) so it never overflows
 the viewport or overlaps at the edges.
 
-**Not built (placeholder, by explicit scope decision):** command palette
-(⌘K button is a stub). Known debt: no bare index on `nextRenewalAt` for the
+**Authenticated home / returning-user `/` (2026-07-30 — in the working tree,
+NOT yet committed):** the marketing `/` now branches on `auth()`. Logged-out
+visitors get the marketing landing unchanged; authenticated users get a
+personalized overview instead of acquisition copy (no "Start free"/email
+capture). New `HomeOverview` (`features/dashboard/components/home-overview.tsx`,
+exported from the dashboard barrel) — a "glance + go" lobby: greeting ("Welcome
+back, {name}"; name = `session.user.name` → email local-part → null-safe), a
+plain-voice KPI summary line, ONE primary CTA "Open dashboard" (+ quiet
+"Manage subscriptions" / "Review insights"), then the REAL dashboard widgets
+reused (`KpiRow` + `RenewalRuler` + `InsightsPanel`) — never mocked, so the home
+can't drift from `/dashboard`. Empty-account path (zero subs) shows an
+onboarding card (→ `/subscriptions?new=1`) instead of zeroed stats. `page.tsx`
+fetches via `requireWorkspace` → `getDashboardData` + `listActiveInsights` +
+`fetchWorkspaceSubs` (empty-check; all request-cached). No render-cost
+regression: the `(marketing)` group was ALREADY dynamic (layout awaits
+`auth()`). `HomeOverview` lives in `dashboard` (not `marketing`) so marketing
+stays acquisition-only. E2e: new `tests/e2e/home-authenticated.spec.ts` (authed
+`/` shows the overview); `landing.spec.ts` stays pinned logged-out. Known nit:
+"Open dashboard" also renders in the persistent nav — two identical CTAs on the
+home by design (nav shortcut vs hero); revisit if a strict single-CTA is wanted.
+
+**Command palette is BUILT** (an earlier note here mislabeled it a "⌘K stub" —
+corrected 2026-07-30): fully functional ⌘K palette — nav / search /
+add-subscription / category jump, cmdk-based
+(`components/shell/command-palette.tsx` + `components/ui/command.tsx`), wired in
+the topbar and covered by `tests/e2e/command-palette.spec.ts`.
+
+**Known debt:** no bare index on `nextRenewalAt` for the
 cron's stale scan; single-invocation cron vs serverless timeout; reminder
 recipient = first workspace member; spending trend approximates (no price
 history); timezone dropdown is a plain Select over ~400 IANA zones
@@ -182,8 +210,8 @@ feed / DB-backed rates when accuracy matters; privacy/terms pages; production
 domain. E2E runs **serially** (`workers: 1` in `playwright.config.ts`) because
 all specs share one seeded DB workspace.
 
-**Remaining feature work (after launch list):** command palette, editable
-profile name.
+**Remaining feature work (after launch list):** editable profile name.
+(Command palette already built — see the Status note above.)
 
 **Dev gotchas:** test via `http://localhost:3000`, NEVER `127.0.0.1` (Next
 blocks cross-origin dev resources → hydration silently stalls with zero
