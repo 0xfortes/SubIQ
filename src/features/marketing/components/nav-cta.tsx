@@ -42,7 +42,7 @@ export function NavStartFree() {
         visible ? "opacity-100" : "pointer-events-none opacity-0",
       )}
     >
-      <Link href="#get-started">Start free</Link>
+      <Link href="/register">Start free</Link>
     </Button>
   );
 }

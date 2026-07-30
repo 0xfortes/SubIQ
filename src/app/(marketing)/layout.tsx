@@ -35,7 +35,7 @@ export default async function MarketingLayout({
               <>
                 <NavStartFree />
                 <Button asChild variant="ghost" size="sm">
-                  <Link href="/signin">Log in</Link>
+                  <Link href="/login">Log in</Link>
                 </Button>
               </>
             )}

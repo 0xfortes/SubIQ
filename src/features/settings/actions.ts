@@ -5,8 +5,16 @@ import { regenerateInsights } from "@/features/insights";
 import { err, ok, GENERIC_ERROR, type ActionResult } from "@/lib/errors";
 import { AuthzError, requireWorkspace } from "@/server/authz";
 import { rateLimit } from "@/server/rate-limit";
-import { updateCurrencySchema, updateTimezoneSchema } from "./schemas";
-import { updateUserTimezone, updateWorkspaceCurrency } from "./service";
+import {
+  updateCurrencySchema,
+  updateNameSchema,
+  updateTimezoneSchema,
+} from "./schemas";
+import {
+  updateUserName,
+  updateUserTimezone,
+  updateWorkspaceCurrency,
+} from "./service";
 
 // Same key as subscription mutations: one shared per-user mutation budget.
 const MUTATION_LIMIT = { limit: 60, windowMs: 60_000 };
@@ -33,6 +41,14 @@ async function runSettingsMutation<T>(
     console.error("[settings] mutation failed:", error);
     return err(GENERIC_ERROR);
   }
+}
+
+export async function updateNameAction(input: unknown) {
+  const parsed = updateNameSchema.safeParse(input);
+  if (!parsed.success) return err("Enter a name of 80 characters or fewer");
+  return runSettingsMutation(({ userId }) =>
+    updateUserName(userId, parsed.data.name),
+  );
 }
 
 export async function updateTimezoneAction(input: unknown) {

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { listTimeZones } from "@/lib/dates";
-import { updateTimezoneAction } from "../actions";
+import { updateNameAction, updateTimezoneAction } from "../actions";
 
 const TIMEZONES = listTimeZones();
 
@@ -25,9 +26,28 @@ export function ProfileSettingsForm({
   name: string | null;
   timezone: string;
 }) {
+  const [nameInput, setNameInput] = useState(name ?? "");
+  const [savedName, setSavedName] = useState(name ?? "");
+  const [namePending, startNameTransition] = useTransition();
+
   const [selected, setSelected] = useState(timezone);
   const [saved, setSaved] = useState(timezone);
   const [pending, startTransition] = useTransition();
+
+  function saveName() {
+    startNameTransition(async () => {
+      const result = await updateNameAction({ name: nameInput });
+      if (result.ok) {
+        // Mirror the server's normalization (empty → null) so the dirty check
+        // settles and a subsequent save stays disabled.
+        setSavedName(result.data.name ?? "");
+        setNameInput(result.data.name ?? "");
+        toast.success("Name updated");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
 
   function save() {
     startTransition(async () => {
@@ -47,12 +67,32 @@ export function ProfileSettingsForm({
         <span className="text-muted text-xs">Email</span>
         <span className="text-[13px]">{email}</span>
       </div>
-      {name ? (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-muted text-xs">Name</span>
-          <span className="text-[13px]">{name}</span>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="settings-name">Name</Label>
+        <Input
+          id="settings-name"
+          value={nameInput}
+          onChange={(event) => setNameInput(event.target.value)}
+          placeholder="Your name"
+          maxLength={80}
+          autoComplete="name"
+          className="w-full sm:w-72"
+        />
+        <p className="text-faint text-[11px]">
+          Shown in your welcome greeting. Leave blank to remove it.
+        </p>
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Save name"
+            onClick={saveName}
+            disabled={namePending || nameInput.trim() === savedName}
+          >
+            {namePending ? "Saving…" : "Save"}
+          </Button>
         </div>
-      ) : null}
+      </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="settings-timezone">Timezone</Label>
         <Select value={selected} onValueChange={setSelected}>
@@ -71,16 +111,17 @@ export function ProfileSettingsForm({
           Sets which day counts as today for renewal countdowns. Renewal dates
           themselves don&apos;t shift.
         </p>
-      </div>
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={save}
-          disabled={pending || selected === saved}
-        >
-          {pending ? "Saving…" : "Save"}
-        </Button>
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Save timezone"
+            onClick={save}
+            disabled={pending || selected === saved}
+          >
+            {pending ? "Saving…" : "Save"}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { regenerateAllInsights } from "@/features/insights";
 import {
@@ -6,6 +7,15 @@ import {
 } from "@/features/subscriptions";
 import { env } from "@/lib/env";
 import { runJob, type Job } from "@/lib/jobs";
+import { pruneExpiredSessions } from "@/lib/session";
+
+/** Constant-time string compare (length-safe) for the bearer token. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 
 /**
  * Cron entry point (Vercel Cron sends GET with `Authorization: Bearer
@@ -35,6 +45,8 @@ const nightly: Job = {
     counts.remindersSent = reminders.sent;
     counts.remindersSkipped = reminders.skipped;
 
+    counts.expiredSessionsPruned = await pruneExpiredSessions(now);
+
     return {
       ok: insights.failed === 0,
       counts,
@@ -49,7 +61,8 @@ const jobs: Record<string, Job> = { nightly };
 
 function authorized(request: NextRequest): boolean {
   if (env.CRON_SECRET) {
-    return request.headers.get("authorization") === `Bearer ${env.CRON_SECRET}`;
+    const header = request.headers.get("authorization") ?? "";
+    return safeEqual(header, `Bearer ${env.CRON_SECRET}`);
   }
   // The env schema requires CRON_SECRET in production; this branch only
   // exists so `curl localhost:3000/api/cron/nightly` works in dev.

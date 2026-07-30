@@ -24,6 +24,6 @@ test("authenticated home shows a welcome overview, not marketing copy", async ({
   // Acquisition messaging is gone for logged-in users.
   await expect(page.getByRole("link", { name: "Start free" })).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Send sign-in link" }),
+    page.getByRole("link", { name: "Create your account" }),
   ).toHaveCount(0);
 });

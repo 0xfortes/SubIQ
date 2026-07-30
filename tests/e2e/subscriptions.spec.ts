@@ -139,10 +139,10 @@ test("delete permanently removes a subscription for good", async ({ page }) => {
   await expect(page.getByRole("row", { name: new RegExp(name) })).toBeHidden();
 });
 
-test("unauthenticated users are redirected to sign-in", async ({ browser }) => {
+test("unauthenticated users are redirected to login", async ({ browser }) => {
   const context = await browser.newContext({ storageState: undefined });
   const page = await context.newPage();
   await page.goto("/subscriptions");
-  await expect(page).toHaveURL(/\/signin/);
+  await expect(page).toHaveURL(/\/login/);
   await context.close();
 });

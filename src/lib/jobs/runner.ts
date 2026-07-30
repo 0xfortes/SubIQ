@@ -4,6 +4,7 @@
  * Swapping to Inngest/BullMQ later re-hosts `Job.run` functions unchanged —
  * scheduling, retries, and queues deliberately do not exist here.
  */
+import * as Sentry from "@sentry/nextjs";
 
 export interface JobResult {
   ok: boolean;
@@ -38,6 +39,9 @@ export async function runJob(job: Job, now = new Date()): Promise<JobResult> {
     const elapsed = Date.now() - startedAt;
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[job:${job.name}] failed in ${elapsed}ms: ${message}`);
+    // runJob swallows the throw, so the Next.js onRequestError hook never sees
+    // it — report cron failures to Sentry explicitly.
+    Sentry.captureException(error, { tags: { job: job.name } });
     return { ok: false, counts: {}, error: message };
   }
 }

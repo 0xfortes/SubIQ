@@ -117,6 +117,20 @@ export default async function globalSetup(_config: FullConfig) {
     [userId],
   );
 
+  // Remove the account auth.spec.ts registers, so its register flow is
+  // idempotent across runs. Delete the workspace first (cascades its members),
+  // then the user (cascades sessions/accounts).
+  await client.query(
+    `DELETE FROM "Workspace" WHERE id IN (
+       SELECT wm."workspaceId" FROM "WorkspaceMember" wm
+       JOIN "User" u ON u.id = wm."userId"
+       WHERE u.email = 'e2e-auth@subiq.local'
+     )`,
+  );
+  await client.query(`DELETE FROM "User" WHERE email = 'e2e-auth@subiq.local'`);
+
+  // The E2E user's session is minted directly here (database session
+  // strategy) and paired with the cookie in storageState below.
   const sessionToken = randomUUID();
   const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
   await client.query(

@@ -17,13 +17,18 @@ test("landing page renders the hero and product story", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("landing CTA submits an email and lands on check-email", async ({
-  page,
-}) => {
+test("landing CTAs lead to register and login", async ({ page }) => {
   await page.goto("/");
-  const email = `landing-${Date.now()}@subiq.local`;
-  await page.getByLabel("Email address").fill(email);
-  await page.getByRole("button", { name: "Send sign-in link" }).click();
-  await expect(page).toHaveURL(/\/check-email/);
-  await expect(page.getByText("Check your email")).toBeVisible();
+  // Primary acquisition CTA → registration.
+  await page.getByRole("link", { name: "Create your account" }).click();
+  await expect(page).toHaveURL(/\/register/);
+  await expect(
+    page.getByRole("heading", { name: "Create your account" }),
+  ).toBeVisible();
+  // The register↔login cross-link switches to the login page.
+  await page.getByRole("link", { name: "Log in" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(
+    page.getByRole("heading", { name: "Log in to SubIQ" }),
+  ).toBeVisible();
 });

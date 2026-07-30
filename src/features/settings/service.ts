@@ -8,6 +8,14 @@ export async function updateUserTimezone(userId: string, timezone: string) {
   });
 }
 
+export async function updateUserName(userId: string, name: string | null) {
+  return db.user.update({
+    where: { id: userId },
+    data: { name },
+    select: { name: true },
+  });
+}
+
 export async function updateWorkspaceCurrency(
   workspaceId: string,
   currency: string,

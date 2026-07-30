@@ -1,12 +1,19 @@
 import { z } from "zod";
 import { BillingInterval, SubscriptionStatus } from "@/generated/prisma/enums";
+import { SUPPORTED_CURRENCIES } from "@/lib/money";
 
 const MAX_AMOUNT_MINOR = 100_000_000; // $1M — sanity bound, not a feature.
 
 const subscriptionFields = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   vendor: z.string().trim().max(100).optional(),
-  url: z.url("Enter a valid URL").optional().or(z.literal("")),
+  // http(s) only — a stored `javascript:`/`data:` URL would be an XSS payload
+  // the moment this field is ever rendered as a link.
+  url: z
+    .url("Enter a valid URL")
+    .refine((v) => /^https?:\/\//i.test(v), "Use an http(s) link")
+    .optional()
+    .or(z.literal("")),
   notes: z.string().trim().max(2000).optional(),
   color: z
     .string()
@@ -14,11 +21,12 @@ const subscriptionFields = z.object({
     .optional(),
   categoryId: z.uuid().optional(),
   amountMinor: z.number().int().min(0).max(MAX_AMOUNT_MINOR),
-  currency: z
-    .string()
-    .length(3)
-    .transform((v) => v.toUpperCase())
-    .pipe(z.string().regex(/^[A-Z]{3}$/, "ISO 4217 code")),
+  // A real enum, not just an ISO-4217-shaped string: an unsupported code would
+  // be stored and then silently treated 1:1 by the FX layer (wrong totals).
+  currency: z.preprocess(
+    (v) => (typeof v === "string" ? v.toUpperCase() : v),
+    z.enum(SUPPORTED_CURRENCIES),
+  ),
   interval: z.enum(BillingInterval),
   intervalCount: z.number().int().min(1).max(36).default(1),
   anchorDate: z.coerce.date(),

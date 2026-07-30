@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ export default function AppError({
 }) {
   useEffect(() => {
     console.error("[app] render failed", error.digest ?? error.message);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

@@ -1,6 +1,9 @@
 allowBuilds:
   "@prisma/client": true
   "@prisma/engines": true
+  # Not built: SubIQ uses Sentry as a runtime error SDK only — no source-map
+  # upload, which is the sole thing the @sentry/cli binary powers.
+  "@sentry/cli": false
   "@tailwindcss/oxide": true
   esbuild: true
   prisma: true

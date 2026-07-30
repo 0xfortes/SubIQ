@@ -13,3 +13,12 @@ export const updateTimezoneSchema = z.object({
 export const updateCurrencySchema = z.object({
   currency: z.enum(SUPPORTED_CURRENCIES),
 });
+
+// Name is optional on the User model; an empty submission clears it (→ null).
+export const updateNameSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .max(80)
+    .transform((value) => (value === "" ? null : value)),
+});

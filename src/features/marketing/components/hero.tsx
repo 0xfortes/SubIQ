@@ -30,7 +30,7 @@ export function Hero() {
 
         <div className="marketing-rise mt-9 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 [animation-delay:270ms]">
           <Button asChild size="lg" className="px-5">
-            <Link href="#get-started">Start free</Link>
+            <Link href="/register">Start free</Link>
           </Button>
           <Link
             href="#product"

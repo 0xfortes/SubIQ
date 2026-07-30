@@ -19,9 +19,10 @@ is **committed** through `821db26`; the **authenticated home** (see its note
 below) is done + fully verified but still in the working tree, awaiting the
 user's commit.
 
-1. ✅ Auth (magic link + optional OAuth), personal workspace auto-created.
-   Magic-link submit redirects to `/check-email` from the action itself
-   (`features/auth/actions.ts`), not via Auth.js verify-request pages.
+1. ✅ Auth — **email + password** (magic link was removed 2026-07-30; see the
+   Auth note below). Optional OAuth (Google/GitHub) still supported; personal
+   workspace auto-created (`registerAction` calls `bootstrapPersonalWorkspace`
+   explicitly; OAuth first-sign-in still bootstraps via `events.createUser`).
 2. ✅ Subscriptions CRUD incl. sort select (default **cost**, matching the
    sidebar order), bulk select/archive with undo, an "Archived" chip view with
    per-row Restore (all URL-driven), and **permanent delete** (row + bulk,
@@ -43,6 +44,23 @@ user's commit.
    `features/subscriptions/actions.ts` runMutation + nightly. Real
    `/insights` page shares `InsightRow` with the dashboard panel.
    Marketing landing page + route states (loading/error/not-found) done.
+
+**Auth: email + password (2026-07-30 — replaced magic link):** magic link was
+removed (no verified email domain → couldn't send in prod). Password
+register/login run in **Server Actions** (`features/auth/actions.ts`:
+`registerAction`/`loginAction`) that verify a **scrypt** hash (`lib/password.ts`,
+no dependency) and **mint a database session** via `lib/session.ts` (opaque token
+
+- `db.session.create` + the Auth.js session cookie) — we deliberately **kept
+  `session.strategy: "database"`** and did NOT adopt the Credentials provider/JWT,
+  so `session.user` self-sync, the proxy cookie check, and the e2e DB-session
+  bypass all still work, and OAuth/magic-link can be re-added as pure provider
+  additions. `User.passwordHash String?` (null for OAuth-only). Pages: `(auth)`
+  route group → `/login` + `/register` (RHF forms; shared centered layout); old
+  `/signin` + `/check-email` deleted. Logout added to `MobileNav` (was
+  desktop-sidebar only). `lib/email.ts` + `RESEND_API_KEY`/`EMAIL_FROM` **stay** —
+  still used by renewal reminders. Login/register are rate-limited; login returns a
+  single generic "Invalid email or password" (no user enumeration).
 
 **Locked decisions** (expensive to reverse — don't change casually):
 `AiInsight.savingsMinor` is always monthly-equivalent in the workspace **base**
@@ -128,12 +146,10 @@ add-subscription / category jump, cmdk-based
 (`components/shell/command-palette.tsx` + `components/ui/command.tsx`), wired in
 the topbar and covered by `tests/e2e/command-palette.spec.ts`.
 
-**Known debt:** no bare index on `nextRenewalAt` for the
-cron's stale scan; single-invocation cron vs serverless timeout; reminder
+**Known debt:** single-invocation cron vs serverless timeout; reminder
 recipient = first workspace member; spending trend approximates (no price
 history); timezone dropdown is a plain Select over ~400 IANA zones
-(typeahead works; a Command combobox is future polish); `User.name` shown
-read-only in settings, not editable; DESIGN.md category hues #C9A0F5 (AI Tools)
+(typeahead works; a Command combobox is future polish); DESIGN.md category hues #C9A0F5 (AI Tools)
 vs #6FA8F5 (Dev & Infra)
 are near-identical under red-green color blindness — mitigated everywhere by
 direct labels, but a palette tweak is worth considering.
@@ -174,20 +190,51 @@ Launch order (blockers first):
    the app uses the `pg` driver adapter, serverless exhausts direct
    connections) and `DIRECT_URL` = direct/session (`:5432`) for migrations
    (`migrate deploy` on the empty prod DB builds clean schema — seeding never
-   runs on deploy). Plus Resend API key + **verified sending domain** (default
-   `EMAIL_FROM` implies owning `subiq.app`; magic-link auth is unusable without
-   email); `AUTH_SECRET`/`CRON_SECRET` on Vercel. Disable the Data API on the
-   prod project too (see Infra note).
-5. Deploy a preview → smoke-test magic-link sign-in end-to-end (the one
-   flow no local test covers — dev email is console-only).
+   runs on deploy). Resend API key + `EMAIL_FROM` are still needed for **renewal
+   reminder** emails (not auth anymore — auth is email+password, so a verified
+   sending domain is no longer a launch blocker; reminders just won't send until
+   one exists, which is fine pre-users); `AUTH_SECRET`/`CRON_SECRET` on Vercel.
+   Disable the Data API on the prod project too (see Infra note).
+5. Deploy → smoke-test **register + login** end-to-end (all covered by
+   `tests/e2e/auth.spec.ts` locally; the prod smoke test confirms the session
+   cookie is set on the real domain).
 
-**Security hardening (2026-07-28):** `subscriptions/service.ts` now validates
-a client-supplied `categoryId` belongs to the workspace before write
-(`resolveCategoryId`, used in create + update) — closes a cross-tenant
-category reference/leak (uuidv7 made it low-severity, but IDs are never
-trusted). DB layer otherwise audited clean: zero raw SQL in app code (all
-Prisma-parameterized), dynamic `orderBy`/status filters whitelisted, every
-mutation workspace-scoped, all inputs Zod-validated.
+**Security audit remediation (2026-07-30):** full-app audit run; no critical/
+injection/IDOR issues (tenant isolation, Zod-at-every-boundary, and
+Prisma-only parameterization were already solid). Fixes shipped:
+
+- **Login brute-force (was High):** durable per-account lockout on `User`
+  (`failedLoginCount`/`lockedUntil`) — locks 15m after 10 fails, atomic
+  increment, cleared on success. Survives serverless cold starts (the
+  in-memory `rate-limit.ts` stays as a first line). _Remaining:_ a distributed
+  IP/global limiter still needs a shared store (Redis) — noted for when infra
+  is added.
+- **Password hashing:** `lib/password.ts` now **async** scrypt (no event-loop
+  block), **N=2^17** (OWASP), and **cost params encoded in the hash string**
+  (`scrypt:N:r:p:salt:hash`) so cost can rise later without invalidating
+  existing hashes. Login runs a dummy scrypt for unknown users → constant-time
+  (no enumeration via timing).
+- **Open redirect:** `callbackUrl` now rejects `//host` / `/\host`
+  (`lib/safe-redirect.ts`, used by auth schemas + login/register pages).
+- **Input hardening:** subscription `currency` is a real `z.enum`
+  (`SUPPORTED_CURRENCIES`), not just ISO-shaped; `url` restricted to http(s)
+  (latent stored-XSS guard).
+- **Headers/CSP:** added HSTS + `poweredByHeader:false`; **CSP moved to
+  `proxy.ts` with a per-request nonce + `strict-dynamic`** in production
+  (dropped `script-src 'unsafe-inline'`; dev stays loose for HMR). Verified via
+  `next start`: header nonce == script nonce, all scripts nonced.
+- **Cron:** bearer check is constant-time (`timingSafeEqual`).
+- **Session hygiene:** nightly job prunes expired `Session` rows
+  (`pruneExpiredSessions`).
+- **Accepted/deferred:** registration still reveals "email exists" and there's
+  no email verification — both need a verified sending domain (revisit
+  together); two long-unused secrets remain in git history (never reuse).
+
+`subscriptions/service.ts` also validates a client-supplied `categoryId`
+belongs to the workspace before write (`resolveCategoryId`, create + update) —
+closes a cross-tenant category reference/leak. DB layer audited clean: zero raw
+SQL in app code (all Prisma-parameterized), dynamic `orderBy`/status filters
+whitelisted, every mutation workspace-scoped, all inputs Zod-validated.
 
 **Supabase / infra decisions (2026-07-28):** Security Advisor's no-RLS warning
 RESOLVED by **disabling the Data API** — SubIQ reaches Postgres only via Prisma
@@ -203,15 +250,39 @@ deploy). All work through 2026-07-30 is committed (`821db26`); the DEV Supabase
 project holds the mixed-currency seed data used to verify conversion end-to-end.
 
 Pre-users, non-blocking: cron `maxDuration = 300` needs Vercel Pro (Hobby
-caps at 60s); error observability (Sentry — the one new dependency worth
-arguing for); bare `nextRenewalAt` index migration for the cron stale scan;
+caps at 60s);
 **FX rates are a static hand-maintained table (approximate)** — swap to a live
 feed / DB-backed rates when accuracy matters; privacy/terms pages; production
 domain. E2E runs **serially** (`workers: 1` in `playwright.config.ts`) because
 all specs share one seeded DB workspace.
 
-**Remaining feature work (after launch list):** editable profile name.
-(Command palette already built — see the Status note above.)
+**Error observability (2026-07-30 — DONE):** `@sentry/nextjs` wired as a
+**runtime-only, errors-only** capture layer (locked decision: no `withSentryConfig`,
+no source-map upload / `SENTRY_AUTH_TOKEN`, no Turbopack build changes, no
+tracing/replay — DSN-gated so it's a no-op without `NEXT_PUBLIC_SENTRY_DSN`).
+`@sentry/cli` build is intentionally skipped (`pnpm-workspace.yaml` allowBuilds:
+false) since we don't upload maps. Client init in `src/instrumentation-client.ts`;
+server/edge init + `onRequestError` in `src/instrumentation.ts`; explicit
+`captureException` in `src/app/global-error.tsx` (new root boundary),
+`(app)/error.tsx`, and the cron `lib/jobs/runner.ts` catch (swallows the throw,
+so `onRequestError` never sees it). CSP `connect-src` allows Sentry ingest
+wildcards. The DSN is public (ships in the client bundle) so it's read straight
+from `NEXT_PUBLIC_SENTRY_DSN`, NOT via server-only `lib/env.ts`. Set the DSN on
+Vercel at go-live to activate; end-to-end capture (throw → dashboard) is the one
+thing unverifiable without a real Sentry project.
+
+**`nextRenewalAt` index (2026-07-30 — DONE):** bare `@@index([nextRenewalAt])`
+on `Subscription` (migration `20260730153146_add_subscription_next_renewal_idx`)
+serves the two cron cross-workspace scans (`recomputeStaleRenewals`,
+`sendDueRenewalReminders`) that filter `nextRenewalAt` with no `workspaceId`
+predicate. A partial `WHERE deletedAt IS NULL` index is tighter but Prisma can't
+express it declaratively — future polish only.
+
+**Editable profile name (2026-07-30 — DONE):** `User.name` is now editable in
+`/settings` (`updateNameSchema` → `updateUserName` → `updateNameAction` via the
+existing `runSettingsMutation`; empty input clears to null). Two independent
+Save buttons in the Profile card (name / timezone) with distinct aria-labels.
+DB session strategy means `session.user.name` self-syncs — no auth callback.
 
 **Dev gotchas:** test via `http://localhost:3000`, NEVER `127.0.0.1` (Next
 blocks cross-origin dev resources → hydration silently stalls with zero
@@ -332,7 +403,8 @@ rows; UI only reads them. Prompts live in versioned files, not inline strings.
 
 ## V1 scope (✅ ALL BUILT — see Status section at top; kept as the spec of record)
 
-1. Auth (email magic link + OAuth), personal workspace auto-created.
+1. Auth (email + password; OAuth optional; magic link removable/re-addable),
+   personal workspace auto-created.
 2. Subscriptions CRUD: create, edit, archive (soft delete), restore,
    duplicate, favorites, search/filter/sort, bulk archive, permanent delete.
 3. Dashboard (matches the approved v3 prototype — see DESIGN.md): KPI row,

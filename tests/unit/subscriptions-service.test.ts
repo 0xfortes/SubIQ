@@ -29,7 +29,7 @@ const SUB_ID = "22222222-2222-7222-8222-222222222222";
 const baseInput = {
   name: "Netflix",
   amountMinor: 1549,
-  currency: "USD",
+  currency: "USD" as const,
   interval: BillingInterval.MONTH,
   intervalCount: 1,
   anchorDate: new Date(Date.UTC(2026, 0, 15)),

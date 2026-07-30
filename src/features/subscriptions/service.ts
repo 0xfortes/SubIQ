@@ -197,8 +197,9 @@ const RECOMPUTE_BATCH = 200;
  * past dates. Each update moves the row strictly past `now`, so looping
  * until the filter is empty terminates without cursors.
  *
- * Accepted v1 debt: the filter scans without a bare nextRenewalAt index
- * — trivial at personal scale, add the index when it isn't.
+ * This cross-workspace scan is served by the bare @@index([nextRenewalAt])
+ * on Subscription (no workspaceId predicate, so the composite indexes
+ * don't apply).
  */
 export async function recomputeStaleRenewals(now = new Date()) {
   let recomputed = 0;

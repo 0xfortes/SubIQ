@@ -9,9 +9,11 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 
 import {
   updateCurrencySchema,
+  updateNameSchema,
   updateTimezoneSchema,
 } from "@/features/settings/schemas";
 import {
+  updateUserName,
   updateUserTimezone,
   updateWorkspaceCurrency,
 } from "@/features/settings/service";
@@ -60,6 +62,50 @@ describe("updateCurrencySchema", () => {
       false,
     );
     expect(updateCurrencySchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("updateNameSchema", () => {
+  it("trims and keeps a non-empty name", () => {
+    const parsed = updateNameSchema.safeParse({ name: "  Ada Lovelace  " });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.name).toBe("Ada Lovelace");
+  });
+
+  it("normalizes empty / whitespace-only input to null (clears the name)", () => {
+    for (const name of ["", "   "]) {
+      const parsed = updateNameSchema.safeParse({ name });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.name).toBeNull();
+    }
+  });
+
+  it("rejects names longer than 80 characters", () => {
+    expect(updateNameSchema.safeParse({ name: "a".repeat(81) }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("updateUserName", () => {
+  it("updates only the name of the given user", async () => {
+    dbMock.user.update.mockResolvedValue({ name: "Ada" });
+    await updateUserName(USER, "Ada");
+    expect(dbMock.user.update).toHaveBeenCalledWith({
+      where: { id: USER },
+      data: { name: "Ada" },
+      select: { name: true },
+    });
+  });
+
+  it("writes null to clear the name", async () => {
+    dbMock.user.update.mockResolvedValue({ name: null });
+    await updateUserName(USER, null);
+    expect(dbMock.user.update).toHaveBeenCalledWith({
+      where: { id: USER },
+      data: { name: null },
+      select: { name: true },
+    });
   });
 });
 

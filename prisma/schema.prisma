@@ -58,6 +58,13 @@ model User {
   emailVerified DateTime? @db.Timestamptz(3)
   name          String?
   image         String?
+  // Scrypt hash (lib/password.ts) for email+password login. Null for
+  // OAuth-only accounts, which authenticate via the provider, not a password.
+  passwordHash  String?
+  // Durable brute-force throttle for password login (survives serverless cold
+  // starts, unlike the in-memory limiter). Reset on a successful login.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime? @db.Timestamptz(3)
   // IANA zone, applied at the presentation layer only — storage is UTC.
   timezone      String    @default("UTC")
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
@@ -205,6 +212,11 @@ model Subscription {
   @@index([workspaceId, nextRenewalAt])
   @@index([workspaceId, status])
   @@index([categoryId])
+  // Bare renewal index for the nightly cron's cross-workspace scans
+  // (recomputeStaleRenewals, sendDueRenewalReminders) — these filter
+  // nextRenewalAt with no workspaceId predicate, so the composites above
+  // don't apply.
+  @@index([nextRenewalAt])
 }
 
 // Rule-based in v1; LLM-generated later writes the same rows (service

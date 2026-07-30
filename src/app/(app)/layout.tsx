@@ -18,7 +18,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect("/login");
 
   const { workspaceId } = await requireWorkspace();
   // fetchWorkspaceSubs is request-cached and already runs inside
@@ -48,6 +48,7 @@ export default async function AppLayout({
           subs={subs.map(({ id, name }) => ({ id, name }))}
           mobileNav={
             <MobileNav
+              email={session.user.email ?? null}
               insightCount={insightCount}
               categories={<CategoryAccordion categories={data.accordion} />}
             />
