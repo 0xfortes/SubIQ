@@ -60,6 +60,18 @@ Category record.
 - Card padding 16–18px; grid gaps 12px; sidebar width 244px.
 - Content max-width 1160px, centered.
 
+### Brand mark
+
+The logo is the **"Renewal Pulse"** mark: four rounded vertical bars of varying
+height (heights 10/17/8/14 on a 24-grid), reading as the rhythm of spend over a
+renewal cycle — deliberately echoing the Renewal Ruler. One component,
+`components/ui/brand-mark.tsx` (`<BrandMark size className />`), inherits color
+via `currentColor`; render it in `text-accent` on nav/sidebar/auth/footer. The
+tab/app favicon is `src/app/icon.svg` — the same bars knocked out of a rounded
+accent→violet (`#8B93FF`→`#C9A0F5`) gradient tile so it reads on light and dark
+tabs. Never re-introduce a letter-in-a-box lockup. Service logos (a different
+concern) live in the brand registry — see the Renewal Ruler.
+
 ### Motion
 
 The emil-design-eng skill (and its companion animation skills) is the
@@ -144,31 +156,46 @@ chip tint; fourth (Potential savings) mint. All values derive from the
 current scope — nothing hardcoded. Empty scope shows "—" with an honest
 subline ("nothing due").
 
-### Renewal Ruler (signature element — protect it)
+### Renewal Ruler → "Next 30 days" module (signature element — protect it)
 
-- Full-width card titled "Next 30 days" with subline
-  "{n} renewals · {$total} leaving your account".
-- Track: 31 daily ticks (1px, `line`), heavier weekly ticks (`line-strong`),
-  mono date labels at 0/7/14/21/30 (day 0 = "Today").
-- Each renewal = vertical 1.5px stem from the baseline + a mono amount flag
-  at its top (surface-2 bg, 1px line-strong border, one squared corner
-  pointing down the stem).
-- **Lane algorithm (no overlaps, by construction):** sort renewals by date;
-  each flag joins the lowest lane whose previous flag is ≥ MIN_GAP (13% of
-  track width) to its left, else a new lane opens. Lane index sets stem
-  height (24px + lane × 26px); track height grows with lane count.
-  Implement as a pure function in `lib/` with unit tests (dense clusters,
-  same-day, empty).
-- Same-day pileups (>3 on one date): collapse into one stacked marker with
-  a count flag ("3 · $45.99") that expands on click.
-- Flags within 4 days of today use the amber urgent style.
-- Flags at >86% of track flip to extend leftward so they never clip.
-- Hover/focus: stem brightens, flag border takes the service's brand hue, and a
-  tooltip (surface-2, name + amount + date) appears above. Built on **Radix
-  Tooltip** (`components/ui/tooltip.tsx`) — portaled with `avoidCollisions`, so
-  it flips/shifts to stay inside the viewport instead of clipping at the edges.
-- Fully keyboard operable: each stem is a button with a complete aria-label
-  ("{name}, {amount}, renews {date}").
+Redesigned 2026-07-31 (UX-first) from the amount-flag ruler to a **hybrid**:
+a spatial band for the month at a glance + a grouped agenda for exact detail,
+so a first-time user instantly reads _what renews next, when, how much, and
+which service_. Full-width card titled "Next 30 days", subline
+"{n} renewals · {$total} leaving your account". Three synchronized parts share
+one hover state (`activeDay`) — hovering/focusing a band node highlights its
+agenda row and vice-versa:
+
+1. **Spatial band** (compact, ~46px): 31 daily ticks (1px `line`), heavier
+   weekly ticks (`line-strong`), mono labels Today / +15d / +30d. **One node
+   per day** (same-day renewals merged; a merged node is slightly larger),
+   positioned along the 0..30 axis, colored by the service's **brand color**
+   when it reads on dark, else the category hue. Nodes within 4 days are amber.
+   Each node is a keyboard-operable button with a full aria-label and a **Radix
+   Tooltip** (`components/ui/tooltip.tsx`, portaled, `avoidCollisions`); on
+   hover/focus it scales up (motion-safe) with a hued halo.
+2. **Up next**: the single soonest renewal, emphasized — service logo + name ·
+   category + relative time + amount. The time reads amber when ≤4 days, else
+   muted (amber stays semantic: money leaving soon).
+3. **Agenda**: the remaining renewals grouped **This week (≤7d) / Next week
+   (8–14) / Later (15–30)**; each row = service logo + name + category +
+   relative date (weekday for this week, else date) + amount. Rows cross-
+   highlight their band node on hover.
+
+- **Service logos** come from the brand registry `lib/brands.ts` (`resolveBrand`
+  over `simple-icons`, ~60 curated services + aliases), rendered by
+  `components/ui/service-icon.tsx` on a brand-tinted chip; unknown names fall
+  back to the letter avatar (`ServiceAvatar`) so the layout is identical either
+  way. Dark brand colors (GitHub/Notion/Vercel) render the glyph in a light
+  neutral (`isDarkColor` in `lib/colors.ts`). ServiceIcon is shared by the
+  timeline, subscriptions table, analytics leaderboard, and marketing preview.
+- **Data shaping is pure** in `lib/renewal-ruler.ts` — `groupRenewalsByDay`
+  (band), `bucketRenewals` (up-next + windows), `sortRenewals` — with unit
+  tests (same-day merge, window bounds, bucket boundaries, empty).
+- Motion follows the app-surface rules: 150ms hover transitions, node scale
+  gated on `motion-safe`, no entrance animation. The marketing hero
+  (`ruler-demo.tsx`) mirrors the same language with the marketing entrance
+  stagger, and must not drift from the real module.
 
 ### Spending trend
 

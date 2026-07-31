@@ -1,24 +1,18 @@
 /**
- * Renewal Ruler layout — pure geometry, no React, exhaustively testable.
+ * Renewal timeline data shaping — pure, no React, exhaustively testable.
  *
- * Input: renewal items placed on a 0..RULER_DAYS day axis. Output: markers
- * (same-day items grouped) with a lane assignment such that flags can
- * never overlap, by construction:
- *   sort markers by day; each flag joins the lowest lane whose previous
- *   flag is ≥ MIN_GAP (fraction of track width) to its left, else a new
- *   lane opens. Lane index sets stem height; track height grows with the
- *   lane count.
+ * The "Next 30 days" module has two synchronized views over the same items:
+ *   - a spatial BAND: renewals grouped by day into nodes along a 0..30 axis
+ *     (`groupRenewalsByDay`);
+ *   - an AGENDA list: the soonest renewal pulled out as "up next", the rest
+ *     bucketed into this week / next week / later (`bucketRenewals`).
+ * Both consume the same window-filtered, day-then-amount ordering.
  */
 
 export const RULER_DAYS = 30;
-/** Minimum horizontal gap between flags sharing a lane (13% of width). */
-export const MIN_GAP = 0.13;
-/** Flags beyond this position flip to extend leftward so they never clip. */
-export const FLIP_THRESHOLD = 0.86;
-/** Same-day pileups above this collapse into one stacked count marker. */
-export const STACK_LIMIT = 3;
-export const STEM_BASE_PX = 24;
-export const STEM_PER_LANE_PX = 26;
+/** Bucket boundaries (inclusive upper bound, in whole days from today). */
+export const THIS_WEEK_MAX = 7;
+export const NEXT_WEEK_MAX = 14;
 
 export interface RulerItem {
   id: string;
@@ -27,87 +21,81 @@ export interface RulerItem {
   amountMinor: number;
   currency: string;
   name: string;
-  /** Brand hue for hover styling, if the service has one. */
+  /** Brand hue for styling, if the service has one. */
   color?: string | null;
-  /** Presentation cycle suffix ("/mo") for tooltips. */
+  /** Presentation cycle suffix ("/mo") for detail rows. */
   cycle?: string;
+  /** Category name for the agenda meta line, if any. */
+  category?: string | null;
 }
 
-export interface RulerMarker {
+export interface DayGroup {
   day: number;
   /** 0..1 fraction along the track. */
   position: number;
-  lane: number;
-  stemPx: number;
-  /** Flag extends leftward to avoid clipping the track edge. */
-  flipped: boolean;
-  /** >STACK_LIMIT same-day items collapse; flag shows count + total. */
-  stacked: boolean;
+  /** Items on this day, largest amount first. */
+  items: RulerItem[];
   totalMinor: number;
   currency: string;
-  items: RulerItem[];
 }
 
-export interface RulerLayout {
-  markers: RulerMarker[];
-  laneCount: number;
-  trackHeightPx: number;
+export interface RenewalBuckets {
+  /** The single soonest renewal (largest amount breaks a same-day tie). */
+  upNext: RulerItem | null;
+  /** day 0..7, excluding `upNext`. */
+  thisWeek: RulerItem[];
+  /** day 8..14. */
+  nextWeek: RulerItem[];
+  /** day 15..30. */
+  later: RulerItem[];
 }
 
-export function layoutRuler(items: RulerItem[]): RulerLayout {
+function inWindow(item: RulerItem): boolean {
+  return item.day >= 0 && item.day <= RULER_DAYS;
+}
+
+/** Window-filtered items ordered by soonest, then largest amount. */
+export function sortRenewals(items: RulerItem[]): RulerItem[] {
+  return items
+    .filter(inWindow)
+    .sort((a, b) => a.day - b.day || b.amountMinor - a.amountMinor);
+}
+
+/** One node per day (same-day renewals merged), ordered by day. */
+export function groupRenewalsByDay(items: RulerItem[]): DayGroup[] {
   const byDay = new Map<number, RulerItem[]>();
   for (const item of items) {
-    if (item.day < 0 || item.day > RULER_DAYS) continue;
+    if (!inWindow(item)) continue;
     const bucket = byDay.get(item.day) ?? [];
     bucket.push(item);
     byDay.set(item.day, bucket);
   }
 
-  const days = [...byDay.keys()].sort((a, b) => a - b);
-  const laneLastPosition: number[] = [];
-  const markers: RulerMarker[] = [];
-
-  for (const day of days) {
-    const dayItems = byDay
-      .get(day)!
-      .sort((a, b) => b.amountMinor - a.amountMinor);
-    const position = day / RULER_DAYS;
-
-    const groups: RulerItem[][] =
-      dayItems.length > STACK_LIMIT
-        ? [dayItems]
-        : dayItems.map((item) => [item]);
-
-    for (const group of groups) {
-      let lane = laneLastPosition.findIndex(
-        (last) => position - last >= MIN_GAP,
-      );
-      if (lane === -1) {
-        lane = laneLastPosition.length;
-        laneLastPosition.push(position);
-      } else {
-        laneLastPosition[lane] = position;
-      }
-
-      markers.push({
+  return [...byDay.keys()]
+    .sort((a, b) => a - b)
+    .map((day) => {
+      const dayItems = byDay
+        .get(day)!
+        .sort((a, b) => b.amountMinor - a.amountMinor);
+      return {
         day,
-        position,
-        lane,
-        stemPx: STEM_BASE_PX + lane * STEM_PER_LANE_PX,
-        flipped: position > FLIP_THRESHOLD,
-        stacked: group.length > 1,
-        totalMinor: group.reduce((sum, item) => sum + item.amountMinor, 0),
-        currency: group[0]?.currency ?? "USD",
-        items: group,
-      });
-    }
-  }
+        position: day / RULER_DAYS,
+        items: dayItems,
+        totalMinor: dayItems.reduce((sum, item) => sum + item.amountMinor, 0),
+        currency: dayItems[0]?.currency ?? "USD",
+      };
+    });
+}
 
-  const laneCount = laneLastPosition.length;
+/** Pull out the soonest renewal, bucket the rest by time window. */
+export function bucketRenewals(items: RulerItem[]): RenewalBuckets {
+  const [upNext, ...rest] = sortRenewals(items);
   return {
-    markers,
-    laneCount,
-    trackHeightPx:
-      STEM_BASE_PX + Math.max(0, laneCount - 1) * STEM_PER_LANE_PX + 34,
+    upNext: upNext ?? null,
+    thisWeek: rest.filter((item) => item.day <= THIS_WEEK_MAX),
+    nextWeek: rest.filter(
+      (item) => item.day > THIS_WEEK_MAX && item.day <= NEXT_WEEK_MAX,
+    ),
+    later: rest.filter((item) => item.day > NEXT_WEEK_MAX),
   };
 }

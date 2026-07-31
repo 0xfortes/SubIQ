@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { Footer, NavStartFree } from "@/features/marketing";
 
 export default async function MarketingLayout({
@@ -17,14 +18,9 @@ export default async function MarketingLayout({
           <Link
             href="/"
             aria-label="SubIQ home"
-            className="focus-visible:outline-accent flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="focus-visible:outline-accent text-accent flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <div
-              aria-hidden
-              className="bg-accent text-on-accent flex size-6 items-center justify-center rounded-md text-[11px] font-semibold"
-            >
-              S
-            </div>
+            <BrandMark size={24} />
           </Link>
           <nav className="flex items-center gap-2">
             {session?.user ? (

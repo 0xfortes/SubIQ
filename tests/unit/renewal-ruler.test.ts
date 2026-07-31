@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  FLIP_THRESHOLD,
-  layoutRuler,
-  MIN_GAP,
+  bucketRenewals,
+  groupRenewalsByDay,
   RULER_DAYS,
-  STACK_LIMIT,
+  sortRenewals,
   type RulerItem,
 } from "@/lib/renewal-ruler";
 
@@ -18,99 +17,97 @@ function item(overrides: Partial<RulerItem> & { day: number }): RulerItem {
   };
 }
 
-describe("layoutRuler", () => {
-  it("returns an empty layout for no items", () => {
-    const layout = layoutRuler([]);
-    expect(layout.markers).toEqual([]);
-    expect(layout.laneCount).toBe(0);
-  });
-
-  it("keeps well-spaced items in a single lane", () => {
-    const layout = layoutRuler([
-      item({ day: 0 }),
-      item({ day: 10 }),
-      item({ day: 20 }),
-      item({ day: 30 }),
+describe("sortRenewals", () => {
+  it("orders by soonest day, then largest amount", () => {
+    const sorted = sortRenewals([
+      item({ day: 5, name: "B", amountMinor: 100 }),
+      item({ day: 2, name: "A" }),
+      item({ day: 5, name: "C", amountMinor: 9000 }),
     ]);
-    expect(layout.laneCount).toBe(1);
-    expect(layout.markers.every((m) => m.lane === 0)).toBe(true);
-  });
-
-  it("opens a new lane when flags are closer than MIN_GAP", () => {
-    // Days 1 and 2 are 1/30 apart — far below MIN_GAP.
-    const layout = layoutRuler([item({ day: 1 }), item({ day: 2 })]);
-    expect(layout.laneCount).toBe(2);
-    expect(layout.markers.map((m) => m.lane)).toEqual([0, 1]);
-  });
-
-  it("reuses a lane once the gap is respected", () => {
-    const dayGap = Math.ceil(MIN_GAP * RULER_DAYS); // first spacing that fits
-    const layout = layoutRuler([
-      item({ day: 0 }),
-      item({ day: 1 }),
-      item({ day: dayGap }),
-    ]);
-    // Third flag is ≥ MIN_GAP from the first → rejoins lane 0.
-    expect(layout.markers[2]?.lane).toBe(0);
-    expect(layout.laneCount).toBe(2);
-  });
-
-  it("never lets two flags in one lane violate MIN_GAP (dense cluster)", () => {
-    const layout = layoutRuler(
-      Array.from({ length: 12 }, (_, i) => item({ day: i * 2 })),
-    );
-    const byLane = new Map<number, number[]>();
-    for (const marker of layout.markers) {
-      const positions = byLane.get(marker.lane) ?? [];
-      positions.push(marker.position);
-      byLane.set(marker.lane, positions);
-    }
-    for (const positions of byLane.values()) {
-      for (let i = 1; i < positions.length; i++) {
-        expect(positions[i]! - positions[i - 1]!).toBeGreaterThanOrEqual(
-          MIN_GAP - 1e-9,
-        );
-      }
-    }
-  });
-
-  it("gives same-day items distinct lanes when below the stack limit", () => {
-    const layout = layoutRuler([
-      item({ day: 5, name: "A" }),
-      item({ day: 5, name: "B" }),
-    ]);
-    expect(layout.markers).toHaveLength(2);
-    expect(new Set(layout.markers.map((m) => m.lane)).size).toBe(2);
-  });
-
-  it("collapses same-day pileups above the stack limit into one marker", () => {
-    const items = Array.from({ length: STACK_LIMIT + 1 }, (_, i) =>
-      item({ day: 7, name: `S${i}`, amountMinor: 500 }),
-    );
-    const layout = layoutRuler(items);
-    expect(layout.markers).toHaveLength(1);
-    const marker = layout.markers[0]!;
-    expect(marker.stacked).toBe(true);
-    expect(marker.items).toHaveLength(STACK_LIMIT + 1);
-    expect(marker.totalMinor).toBe(500 * (STACK_LIMIT + 1));
-  });
-
-  it("flips flags near the right edge", () => {
-    const layout = layoutRuler([item({ day: RULER_DAYS })]);
-    expect(layout.markers[0]?.flipped).toBe(true);
-    expect(layout.markers[0]?.position).toBeGreaterThan(FLIP_THRESHOLD);
+    expect(sorted.map((i) => i.name)).toEqual(["A", "C", "B"]);
   });
 
   it("drops items outside the 0..30 window", () => {
-    const layout = layoutRuler([item({ day: -1 }), item({ day: 31 })]);
-    expect(layout.markers).toEqual([]);
+    expect(sortRenewals([item({ day: -1 }), item({ day: 31 })])).toEqual([]);
+    expect(
+      sortRenewals([item({ day: 0 }), item({ day: RULER_DAYS })]),
+    ).toHaveLength(2);
+  });
+});
+
+describe("groupRenewalsByDay", () => {
+  it("returns an empty array for no items", () => {
+    expect(groupRenewalsByDay([])).toEqual([]);
   });
 
-  it("orders same-day stacks by amount (largest first)", () => {
-    const layout = layoutRuler([
+  it("merges same-day renewals into one node with a summed total", () => {
+    const groups = groupRenewalsByDay([
+      item({ day: 7, name: "A", amountMinor: 500 }),
+      item({ day: 7, name: "B", amountMinor: 1500 }),
+      item({ day: 3, name: "C", amountMinor: 200 }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.day).toBe(3);
+    const seven = groups[1]!;
+    expect(seven.items.map((i) => i.name)).toEqual(["B", "A"]); // amount desc
+    expect(seven.totalMinor).toBe(2000);
+  });
+
+  it("positions nodes as a 0..1 fraction of the axis", () => {
+    const groups = groupRenewalsByDay([
+      item({ day: 0 }),
+      item({ day: 15 }),
+      item({ day: 30 }),
+    ]);
+    expect(groups.map((g) => g.position)).toEqual([0, 0.5, 1]);
+  });
+});
+
+describe("bucketRenewals", () => {
+  it("returns nulls/empties for no items", () => {
+    expect(bucketRenewals([])).toEqual({
+      upNext: null,
+      thisWeek: [],
+      nextWeek: [],
+      later: [],
+    });
+  });
+
+  it("pulls out the soonest as up-next and buckets the rest by window", () => {
+    const buckets = bucketRenewals([
+      item({ day: 2, name: "UpNext" }),
+      item({ day: 6, name: "ThisWeek" }),
+      item({ day: 10, name: "NextWeek" }),
+      item({ day: 25, name: "Later" }),
+    ]);
+    expect(buckets.upNext?.name).toBe("UpNext");
+    expect(buckets.thisWeek.map((i) => i.name)).toEqual(["ThisWeek"]);
+    expect(buckets.nextWeek.map((i) => i.name)).toEqual(["NextWeek"]);
+    expect(buckets.later.map((i) => i.name)).toEqual(["Later"]);
+  });
+
+  it("keeps a same-day runner-up in this-week rather than as up-next", () => {
+    const buckets = bucketRenewals([
       item({ day: 3, name: "Small", amountMinor: 100 }),
       item({ day: 3, name: "Big", amountMinor: 9000 }),
     ]);
-    expect(layout.markers[0]?.items[0]?.name).toBe("Big");
+    expect(buckets.upNext?.name).toBe("Big");
+    expect(buckets.thisWeek.map((i) => i.name)).toEqual(["Small"]);
+  });
+
+  it("honors the 7/14 day boundaries exactly", () => {
+    const buckets = bucketRenewals([
+      item({ day: 0, name: "up" }),
+      item({ day: 7, name: "stillThisWeek" }),
+      item({ day: 8, name: "nextWeekStart" }),
+      item({ day: 14, name: "stillNextWeek" }),
+      item({ day: 15, name: "laterStart" }),
+    ]);
+    expect(buckets.thisWeek.map((i) => i.name)).toEqual(["stillThisWeek"]);
+    expect(buckets.nextWeek.map((i) => i.name)).toEqual([
+      "nextWeekStart",
+      "stillNextWeek",
+    ]);
+    expect(buckets.later.map((i) => i.name)).toEqual(["laterStart"]);
   });
 });

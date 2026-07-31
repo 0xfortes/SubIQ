@@ -5,3 +5,4 @@ export { HowItWorks } from "./components/how-it-works";
 export { SignupCta } from "./components/signup-cta";
 export { Footer } from "./components/footer";
 export { NavStartFree } from "./components/nav-cta";
+export { LegalPage, LegalSection } from "./components/legal-page";

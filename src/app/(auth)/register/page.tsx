@@ -31,6 +31,23 @@ export default async function RegisterPage({
       </p>
       <RegisterForm callbackUrl={safeCallbackUrl} />
       <OAuthButtons />
+      <p className="text-faint mt-4 text-center text-[11px] leading-relaxed">
+        By creating an account, you agree to our{" "}
+        <Link
+          href="/terms"
+          className="text-muted focus-visible:outline-accent rounded-sm hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          Terms
+        </Link>{" "}
+        and{" "}
+        <Link
+          href="/privacy"
+          className="text-muted focus-visible:outline-accent rounded-sm hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          Privacy Policy
+        </Link>
+        .
+      </p>
       <p className="text-muted mt-5 text-center text-xs">
         Already have an account?{" "}
         <Link

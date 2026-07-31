@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { LogOut } from "lucide-react";
 import { signOutAction } from "@/features/auth";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { SidebarNav } from "./sidebar-nav";
 
 interface SidebarProps {
@@ -14,9 +15,7 @@ export function Sidebar({ email, insightCount, categories }: SidebarProps) {
   return (
     <aside className="w-sidebar border-line bg-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r md:flex">
       <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-        <div className="bg-accent text-on-accent flex size-6 items-center justify-center rounded-md text-[11px] font-semibold">
-          S
-        </div>
+        <BrandMark size={22} className="text-accent" />
         <span className="text-[13px] font-medium tracking-tight">SubIQ</span>
       </div>
 

@@ -1,89 +1,61 @@
-import { formatMoney } from "@/lib/money";
-import { layoutRuler, RULER_DAYS, type RulerItem } from "@/lib/renewal-ruler";
+import { RULER_DAYS } from "@/lib/renewal-ruler";
+import { resolveBrand } from "@/lib/brands";
+import { isDarkColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
-import { ServiceAvatar } from "@/components/ui/service-avatar";
+import { ServiceIcon } from "@/components/ui/service-icon";
 
 /**
- * The hero object: the product's real Renewal Ruler geometry
- * (lib/renewal-ruler.ts) on curated demo data. Decorative — the caption
- * carries the information; flags stagger in when scrolled into view via
- * the ancestor Reveal's data-visible. Each renewal reads as a category-hued
- * node + a letter-avatar flag, matching the preview's "Coming up" list.
+ * The hero object: the product's "Next 30 days" language on curated demo data,
+ * as recognizable service logos sitting directly on the timeline — the track
+ * explains itself. Decorative (the caption carries the meaning); no prices or
+ * categories, so it stays currency-agnostic. Logos build in left-to-right on
+ * scroll via the ancestor Reveal's data-visible.
  */
 
 const AMBER = "#F2B25C";
+const URGENT_DAYS = 4;
+const TRACK_HEIGHT = 112;
+const BASELINE = 24;
+const STEM_PX = 24;
+const STAGGER_MS = 70;
+/** Let the hero headline land before the timeline starts building in. */
+const BASE_DELAY_MS = 450;
 
-// Days are spaced so the wider avatar flags never collide within a lane
-// (same-lane items stay ≥5 days apart; closer ones fall to the raised lane).
-const DEMO_ITEMS: RulerItem[] = [
-  {
-    id: "figma",
-    day: 2,
-    amountMinor: 1500,
-    currency: "USD",
-    name: "Figma",
-    color: "#8B93FF",
-  },
-  {
-    id: "spotify",
-    day: 5,
-    amountMinor: 1099,
-    currency: "USD",
-    name: "Spotify",
-    color: "#F0708A",
-  },
-  {
-    id: "claude",
-    day: 10,
-    amountMinor: 2000,
-    currency: "USD",
-    name: "Claude",
-    color: "#C9A0F5",
-  },
-  {
-    id: "netflix",
-    day: 15,
-    amountMinor: 1549,
-    currency: "USD",
-    name: "Netflix",
-    color: "#F0708A",
-  },
-  {
-    id: "adobe",
-    day: 20,
-    amountMinor: 5999,
-    currency: "USD",
-    name: "Adobe",
-    color: "#8B93FF",
-  },
-  {
-    id: "notion",
-    day: 23,
-    amountMinor: 1200,
-    currency: "USD",
-    name: "Notion",
-    color: "#4FD1A1",
-  },
-  {
-    id: "vercel",
-    day: 29,
-    amountMinor: 2000,
-    currency: "USD",
-    name: "Vercel",
-    color: "#6FA8F5",
-  },
+interface DemoRenewal {
+  name: string;
+  /** Whole days from today; curated spacing so logo chips never collide. */
+  day: number;
+  /** Fallback hue for services without a brand color (or a dark one). */
+  color: string;
+}
+
+const DEMO_ITEMS: DemoRenewal[] = [
+  { name: "Figma", day: 2, color: "#8B93FF" },
+  { name: "Spotify", day: 5, color: "#4FD1A1" },
+  { name: "Claude", day: 10, color: "#C9A0F5" },
+  { name: "Netflix", day: 15, color: "#F0708A" },
+  { name: "Adobe", day: 20, color: "#8B93FF" },
+  { name: "Notion", day: 23, color: "#4FD1A1" },
+  { name: "Vercel", day: 29, color: "#6FA8F5" },
 ];
 
-const URGENT_DAYS = 4;
-const LABEL_DAYS = [0, 7, 14, 21, 30];
-const TRACK_BOTTOM_PX = 26;
-const FLAG_STAGGER_MS = 70;
-/** Let the hero headline land before the flags start popping in. */
-const FLAG_BASE_DELAY_MS = 450;
+/** The vivid color to identify a renewal by: its real brand color when it reads
+ * on dark, else the curated fallback hue. */
+function nodeHue(item: DemoRenewal): string {
+  const brand = resolveBrand(item.name);
+  if (brand && !isDarkColor(brand.hex)) return `#${brand.hex}`;
+  return item.color;
+}
+
+function relativeLabel(day: number): string {
+  if (day === 0) return "today";
+  if (day === 1) return "tomorrow";
+  return `in ${day} days`;
+}
 
 export function RulerDemo() {
-  const layout = layoutRuler(DEMO_ITEMS);
-  const total = DEMO_ITEMS.reduce((sum, item) => sum + item.amountMinor, 0);
+  const items = [...DEMO_ITEMS].sort((a, b) => a.day - b.day);
+  const soonest = items[0]!;
 
   return (
     <figure className="w-full">
@@ -96,76 +68,71 @@ export function RulerDemo() {
             Next 30 days
           </p>
           <p className="text-faint text-[11.5px]">
-            {DEMO_ITEMS.length} renewals ·{" "}
-            <span className="font-data text-muted">
-              {formatMoney(total, "USD")}
-            </span>{" "}
-            leaving your account
+            <span className="font-data text-muted">{items.length}</span>{" "}
+            renewals ahead
           </p>
         </div>
 
-        <div className="mt-6 overflow-x-auto pb-2">
+        {/* Timeline: logos sit on the track */}
+        <div className="mt-8 overflow-x-auto pb-1">
           <div
-            className="relative w-full min-w-[680px]"
-            style={{ height: layout.trackHeightPx + TRACK_BOTTOM_PX }}
+            className="relative w-full min-w-[560px]"
+            style={{ height: TRACK_HEIGHT }}
           >
-            {/* Baseline */}
             <div
               className="bg-line-strong absolute right-0 left-0 h-px"
-              style={{ bottom: TRACK_BOTTOM_PX }}
+              style={{ bottom: BASELINE }}
             />
-            {/* Day ticks (weekly heavier) */}
             {Array.from({ length: RULER_DAYS + 1 }, (_, day) => (
               <div
                 key={day}
                 className={cn(
                   "absolute w-px",
-                  day % 7 === 0 ? "bg-line-strong h-2.5" : "bg-line h-1.5",
+                  day % 7 === 0 ? "bg-line-strong h-2" : "bg-line h-1",
                 )}
                 style={{
                   left: `${(day / RULER_DAYS) * 100}%`,
-                  bottom: TRACK_BOTTOM_PX,
+                  bottom: BASELINE,
                 }}
               />
             ))}
-            {/* Today anchor */}
             <span
-              className="bg-accent rounded-pill absolute left-0 size-2 -translate-x-1/2 translate-y-1/2"
-              style={{ bottom: TRACK_BOTTOM_PX }}
+              className="bg-accent rounded-pill absolute size-2 -translate-x-1/2 translate-y-1/2"
+              style={{ left: 0, bottom: BASELINE }}
             />
-            {LABEL_DAYS.map((day) => (
-              <span
-                key={day}
-                className={cn(
-                  "font-data absolute bottom-0 text-[10px]",
-                  day === 0 ? "text-muted" : "text-faint",
-                  day === RULER_DAYS && "-translate-x-full",
-                  day !== 0 && day !== RULER_DAYS && "-translate-x-1/2",
-                )}
-                style={{ left: `${(day / RULER_DAYS) * 100}%` }}
-              >
-                {day === 0 ? "Today" : `+${day}d`}
-              </span>
-            ))}
+            <span
+              className="font-data text-muted absolute bottom-0 text-[10px]"
+              style={{ left: 0 }}
+            >
+              Today
+            </span>
+            <span
+              className="font-data text-faint absolute bottom-0 -translate-x-full text-[10px]"
+              style={{ left: "100%" }}
+            >
+              +30d
+            </span>
 
-            {layout.markers.map((marker, index) => {
-              const item = marker.items[0]!;
-              const urgent = marker.day <= URGENT_DAYS;
-              const hue = urgent ? AMBER : (item.color ?? "#8B93FF");
+            {items.map((item, index) => {
+              const urgent = item.day <= URGENT_DAYS;
+              const hue = urgent ? AMBER : nodeHue(item);
               return (
                 <div
-                  key={marker.day}
-                  title={item.name}
-                  className="group absolute w-4 -translate-x-1/2"
+                  key={item.name}
+                  className="marketing-flag absolute -translate-x-1/2"
                   style={{
-                    left: `${marker.position * 100}%`,
-                    bottom: TRACK_BOTTOM_PX,
-                    height: marker.stemPx,
+                    left: `${(item.day / RULER_DAYS) * 100}%`,
+                    bottom: BASELINE,
+                    height: STEM_PX,
+                    transitionDelay: `${BASE_DELAY_MS + index * STAGGER_MS}ms`,
                   }}
                 >
                   {/* Stem */}
                   <span
-                    className="absolute bottom-0 left-1/2 h-full w-[1.5px] -translate-x-1/2 opacity-45 transition-opacity duration-150 group-hover:opacity-100"
+                    className={cn(
+                      "absolute bottom-0 left-1/2 h-full w-[1.5px] -translate-x-1/2",
+                      urgent ? "" : "opacity-50",
+                    )}
                     style={{ backgroundColor: hue }}
                   />
                   {/* Node on the baseline */}
@@ -173,39 +140,49 @@ export function RulerDemo() {
                     className="rounded-pill absolute bottom-0 left-1/2 size-[7px] -translate-x-1/2 translate-y-1/2"
                     style={{ backgroundColor: hue }}
                   />
-                  {/* Flag: letter avatar + amount */}
-                  <div
-                    className={cn(
-                      "marketing-flag bg-surface-2 absolute top-0 flex items-center gap-1.5 border px-1.5 py-1 whitespace-nowrap",
-                      marker.flipped
-                        ? "rounded-tl-flag rounded-tr-flag rounded-bl-flag right-1/2"
-                        : "rounded-tl-flag rounded-tr-flag rounded-br-flag left-1/2",
-                      urgent ? "border-amber/50" : "border-line-strong",
-                    )}
-                    style={{
-                      transitionDelay: `${FLAG_BASE_DELAY_MS + index * FLAG_STAGGER_MS}ms`,
-                    }}
-                  >
-                    <ServiceAvatar name={item.name} color={hue} size="xs" />
+                  {/* Flag: day label + logo, stacked above the stem */}
+                  <div className="absolute bottom-full left-1/2 mb-1.5 flex -translate-x-1/2 flex-col items-center gap-1.5">
                     <span
                       className={cn(
-                        "font-data text-[10.5px]",
-                        urgent ? "text-amber" : "text-text",
+                        "font-data text-[9.5px]",
+                        urgent ? "text-amber" : "text-faint",
                       )}
                     >
-                      {formatMoney(item.amountMinor, item.currency)}
+                      {item.day}d
                     </span>
+                    <ServiceIcon
+                      name={item.name}
+                      color={item.color}
+                      size={urgent ? "md" : "sm"}
+                      shape="circle"
+                      className={cn(
+                        "ring-2",
+                        urgent ? "ring-amber/60" : "ring-surface",
+                      )}
+                    />
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
+
+        {/* Caption: the one thing that matters, as a plain line */}
+        <p
+          className="marketing-flag text-muted mt-5 text-[13px]"
+          style={{
+            transitionDelay: `${BASE_DELAY_MS + items.length * STAGGER_MS}ms`,
+          }}
+        >
+          <span className="text-text font-medium">{soonest.name}</span> renews
+          next, <span className="text-amber">{relativeLabel(soonest.day)}</span>
+          .
+        </p>
       </div>
       <figcaption className="sr-only">
-        Example renewal timeline: eight subscriptions renewing across the next
-        30 days totalling {formatMoney(total, "USD")}, with imminent renewals
-        highlighted in amber.
+        Example renewal timeline: {items.length} subscriptions laid out across
+        the next 30 days, with {soonest.name} renewing{" "}
+        {relativeLabel(soonest.day)}.
       </figcaption>
     </figure>
   );

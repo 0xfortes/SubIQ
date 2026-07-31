@@ -13,11 +13,13 @@ Quality bar: Linear / Stripe / Vercel. Fast, minimal, intentional, accessible.
 
 ## Status (last updated 2026-07-30 — keep this section current)
 
-**All five V1 scope items are BUILT and verified** (134 unit tests, 17/17 e2e,
-typecheck clean; lint has one pre-existing react-hook-form warning). Post-V1 work
-is **committed** through `821db26`; the **authenticated home** (see its note
-below) is done + fully verified but still in the working tree, awaiting the
-user's commit.
+**All five V1 scope items are BUILT and verified** (151 unit tests, 21/21 e2e,
+typecheck clean, prod build green; lint has one pre-existing react-hook-form
+warning). Post-V1 work is **committed** through `821db26`. A large body of newer
+work is **done + fully verified but UNCOMMITTED in the working tree**, awaiting
+the user's commit: the authenticated home, editable profile name, Sentry
+observability + `nextRenewalAt` index, the **magic-link → email+password auth
+rework**, and the **security-audit remediation** (see the notes below).
 
 1. ✅ Auth — **email + password** (magic link was removed 2026-07-30; see the
    Auth note below). Optional OAuth (Google/GitHub) still supported; personal

@@ -1,7 +1,8 @@
 import { ArrowUpRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { CategoryMark } from "@/components/ui/category-mark";
-import { ServiceAvatar } from "@/components/ui/service-avatar";
+import { ServiceIcon } from "@/components/ui/service-icon";
 import { Reveal } from "./reveal";
 
 /**
@@ -128,9 +129,7 @@ export function ProductPreview() {
             {/* Titlebar */}
             <div className="border-line flex h-11 items-center justify-between gap-3 border-b px-4">
               <div className="flex items-center gap-2.5">
-                <div className="bg-accent text-on-accent flex size-5 items-center justify-center rounded-[6px] text-[9px] font-semibold">
-                  S
-                </div>
+                <BrandMark size={17} className="text-accent" />
                 <span className="text-text text-[12px] font-medium">
                   Dashboard
                 </span>
@@ -220,10 +219,11 @@ export function ProductPreview() {
                         key={u.name}
                         className="group hover:bg-wash flex items-center gap-3 rounded-md px-1.5 py-2 transition-colors duration-100"
                       >
-                        <ServiceAvatar
+                        <ServiceIcon
                           name={u.name}
                           color={u.color}
                           size="sm"
+                          shape="circle"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="text-text truncate text-[12.5px]">

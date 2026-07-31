@@ -1,4 +1,4 @@
-import { ServiceAvatar } from "@/components/ui/service-avatar";
+import { ServiceIcon } from "@/components/ui/service-icon";
 import { formatMoney } from "@/lib/money";
 import { LEADERBOARD_LIMIT, type LeaderboardRow } from "../lib";
 
@@ -41,7 +41,7 @@ export function CostLeaderboard({ rows, currency }: CostLeaderboardProps) {
               >
                 {index + 1}
               </span>
-              <ServiceAvatar name={row.name} color={row.color} />
+              <ServiceIcon name={row.name} color={row.color} />
               <div className="min-w-0 flex-1">
                 <p className="text-text truncate text-[12.5px] font-medium">
                   {row.name}

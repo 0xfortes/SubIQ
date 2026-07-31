@@ -34,7 +34,7 @@ import {
 } from "../actions";
 import { cycleSuffix } from "@/lib/recurrence";
 import type { SubscriptionRow } from "../queries";
-import { ServiceAvatar } from "@/components/ui/service-avatar";
+import { ServiceIcon } from "@/components/ui/service-icon";
 import { CategoryMark } from "@/components/ui/category-mark";
 import { StatusPill } from "./status-pill";
 
@@ -322,7 +322,7 @@ export function SubscriptionTable({
               ) : null}
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-2.5">
-                  <ServiceAvatar name={row.name} color={row.color} />
+                  <ServiceIcon name={row.name} color={row.color} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-text truncate font-medium">

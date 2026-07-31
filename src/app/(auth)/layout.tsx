@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BrandMark } from "@/components/ui/brand-mark";
 
 /** Shared chrome for /login and /register: a centered column with the brand
  * mark above the card, so switching between the two feels seamless. */
@@ -11,9 +12,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         aria-label="SubIQ home"
         className="focus-visible:outline-accent flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
       >
-        <span className="bg-accent text-on-accent flex size-7 items-center justify-center rounded-md text-xs font-semibold">
-          S
-        </span>
+        <BrandMark size={26} className="text-accent" />
         <span className="text-sm font-medium tracking-tight">SubIQ</span>
       </Link>
       {children}

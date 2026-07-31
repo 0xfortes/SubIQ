@@ -212,6 +212,7 @@ export async function getDashboardData(
         name: sub.name,
         color: sub.color,
         cycle: cycleSuffix(sub.interval, sub.intervalCount),
+        category: sub.category?.name ?? null,
       });
       rulerTotalMinor += amountInBase;
     }
