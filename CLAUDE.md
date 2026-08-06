@@ -9,6 +9,16 @@ act on the user's behalf — architect for that, don't build it yet.
 
 Quality bar: Linear / Stripe / Vercel. Fast, minimal, intentional, accessible.
 
+**Prose documentation lives in `docs/` (added 2026-08-06 — GITIGNORED, local to
+the author's machine, deliberately not in the repo; a fresh clone won't have
+it)** — written for a human learning the project, where this file is a status
+log written for a tool: `docs/codebase-guide.md` (directory map, end-to-end
+request trace, "which file do I change?" index, env var table), `docs/ci-cd.md`
+(the four gates, the Vercel build, go-live runbook), `docs/security.md` (every
+control + accepted risks). `README.md` (also gitignored) is the entry point.
+When a change invalidates something in those files, update them alongside this
+Status section — if they're present.
+
 ---
 
 ## Status (last updated 2026-08-06 — keep this section current)

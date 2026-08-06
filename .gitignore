@@ -49,3 +49,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 tests/e2e/.auth/
+
+# local documentation (kept on disk, not committed)
+/docs/
+/README.md
