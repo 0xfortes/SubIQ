@@ -21,6 +21,7 @@ import {
   restoreSubscriptions,
   setFavorite,
   updateSubscription,
+  ValidationError,
 } from "./service";
 
 const MUTATION_LIMIT = { limit: 60, windowMs: 60_000 };
@@ -53,7 +54,11 @@ async function runMutation<T>(
     return ok(data);
   } catch (error) {
     if (error instanceof AuthzError) return err("Not authorized");
-    if (error instanceof NotFoundError) return err("Subscription not found");
+    // Both errors carry author-written messages that are safe to show; the
+    // NotFoundError default is already "Subscription not found".
+    if (error instanceof NotFoundError) return err(error.message);
+    // Author-written message describing a rule the user can satisfy.
+    if (error instanceof ValidationError) return err(error.message);
     console.error("[subscriptions] mutation failed:", error);
     return err(GENERIC_ERROR);
   }

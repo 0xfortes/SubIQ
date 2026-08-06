@@ -11,7 +11,7 @@ Quality bar: Linear / Stripe / Vercel. Fast, minimal, intentional, accessible.
 
 ---
 
-## Status (last updated 2026-07-30 — keep this section current)
+## Status (last updated 2026-08-06 — keep this section current)
 
 **All five V1 scope items are BUILT and verified** (151 unit tests, 21/21 e2e,
 typecheck clean, prod build green; lint has one pre-existing react-hook-form
@@ -39,7 +39,8 @@ rework**, and the **security-audit remediation** (see the notes below).
    (ledger-first **at-most-once** via `RenewalReminder` unique constraint).
    Framework in `lib/jobs/`; job bodies live in features.
 5. ✅ Rule-based insights: pure rules in `features/insights/rules.ts`
-   (duplicate-category, annual-switch ~2-months-free estimate,
+   (duplicate-service + service-overlap — see the Insights note below,
+   annual-switch ~2-months-free estimate,
    trial-ending ≤7d), persisted by `regenerateInsights` (upsert on
    `(workspaceId, dedupeKey)` + prune; update branch never touches
    status/dismissedAt so dismissals survive). Triggered post-mutation in
@@ -64,12 +65,69 @@ no dependency) and **mint a database session** via `lib/session.ts` (opaque toke
   still used by renewal reminders. Login/register are rate-limited; login returns a
   single generic "Invalid email or password" (no user enumeration).
 
+**Insights reason about SERVICE PURPOSE, not category (2026-08-06 — replaced
+the category-duplicate rule):** the old `duplicate:{categoryId}` rule flagged
+any two active subs sharing a category, so Netflix + Spotify (both
+"Entertainment") was reported as redundant spend — confidently wrong advice.
+Redundancy is now decided by what a service is FOR, via a curated catalog:
+`lib/services.ts` maps ~90 known services to one of 20 `ServicePurpose` tags
+(VIDEO_STREAMING, AI_ASSISTANT, PASSWORD_MANAGER, …) plus a `canonical` id.
+The name→service matcher was extracted from `lib/brands.ts` into shared
+`lib/service-alias.ts` (`normalizeServiceName` + `createAliasRegistry`), so the
+logo registry and the purpose registry can't drift; `resolveService` falls back
+name → vendor → URL hostname and is the **single seam** an LLM classifier can
+later fill for unknown services (same swap pattern as `lib/exchange-rates.ts`).
+Two rules replace the old one: `DUPLICATE_SERVICE` (the same service billed
+twice — applies to unknown services too, matched on normalized name; it's a
+billing mistake, not a preference) and `SERVICE_OVERLAP` (different services,
+same purpose; members collapse by canonical service first so a duplicate is
+never also counted as an overlap). **Deliberately conservative: an
+unrecognized service produces no redundancy insight at all** — silence beats
+telling someone to cancel something they need, which makes catalog coverage
+the honest limit of the feature. `InsightType.DUPLICATE_CATEGORY` is RETIRED
+but stays in the Prisma enum (Postgres can't drop a value); no code emits it
+and `regenerateInsights`' prune deleted the last rows. Dismissals of those old
+insights were lost by design (accepted — they were the wrong insights).
+Migration `20260806220534_add_service_insight_types`.
+
 **Locked decisions** (expensive to reverse — don't change casually):
 `AiInsight.savingsMinor` is always monthly-equivalent in the workspace **base**
 currency (all amounts are FX-converted into it before summing — see Currency
-below); dedupeKey grammar `duplicate:{categoryId}` / `annual:{subId}` /
-`trial:{subId}:{date}` (format change loses dismissals); reminders are
-at-most-once (ledger row claimed before email).
+below); dedupeKey grammar `dup-service:{serviceIdentity}` /
+`overlap:{servicePurpose}` / `annual:{subId}` / `trial:{subId}:{date}` (format
+change loses dismissals); reminders are at-most-once (ledger row claimed before
+email).
+
+**UI round from user testing (2026-08-06):**
+
+- **One Add-subscription entry point.** The Subscriptions page header button was
+  removed (the persistent topbar link is the only CTA); an empty account gets an
+  inline "Add your first subscription" button in the table's empty state, shown
+  ONLY when unfiltered. Bug this exposed and fixed: `?new=1` now opens the dialog
+  via `useEffect` in `subscriptions-view.tsx`, because clicking the topbar link
+  while already on `/subscriptions` is a soft navigation that never remounts the
+  component, so the `useState(openNew)` initializer never re-ran.
+- **Custom categories.** The form's Category select has an "Other…" option that
+  reveals a free-text name. `categoryName` is sanitized BY CONSTRUCTION
+  (`schemas.ts`: NFC + whitespace collapse, must start alphanumeric, then
+  `[\p{L}\p{N} &'+./-]` only, ≤40 chars) — control chars, bidi overrides, angle
+  brackets and quotes match no class, so nothing hostile is storable; the schema
+  also rejects sending `categoryId` AND `categoryName` together. `lib/slug.ts`
+  builds the URL token from a `[a-z0-9-]` whitelist (accents folded; names in
+  non-Latin scripts fall back to a deterministic `c-{token}` so the display name
+  survives). `resolveCategory` (service) reuses a matching slug, REVIVES a
+  soft-deleted one (the unique constraint ignores `deletedAt`), caps a workspace
+  at 50 categories (`ValidationError` → shown verbatim), and colors new rows via
+  `fallbackColor` (DESIGN.md hue family). Create/update now run in
+  `db.$transaction` so a failed insert can't orphan a category. A concurrent
+  same-slug create rolls back rather than being caught — the retry finds the
+  winner and reuses it.
+- **Settings saves as one unit.** Three per-field Saves → one "Save changes":
+  `updateSettingsSchema` + `updateSettings` (one `$transaction`, returns
+  `currencyChanged` derived from the stored row, never the client) +
+  `updateSettingsAction`; `profile-settings-form.tsx`/`workspace-settings-form.tsx`
+  merged into `settings-form.tsx` (both cards kept, one submit, "Unsaved changes"
+  hint). Insight regeneration now runs only when the currency actually changed.
 
 **Also built (post-V1):** `/settings` page (`features/settings/`) — profile
 timezone + workspace default currency, both applied. Load-bearing rule in
@@ -148,9 +206,13 @@ add-subscription / category jump, cmdk-based
 (`components/shell/command-palette.tsx` + `components/ui/command.tsx`), wired in
 the topbar and covered by `tests/e2e/command-palette.spec.ts`.
 
-**Known debt:** single-invocation cron vs serverless timeout; reminder
-recipient = first workspace member; spending trend approximates (no price
-history); timezone dropdown is a plain Select over ~400 IANA zones
+**Known debt:** the service-purpose catalog in `lib/services.ts` is
+hand-maintained — services outside it are invisible to redundancy detection
+(silent, never wrong); overlap is a heuristic about function, not actual usage,
+so the copy stays suggestive ("if one is enough"); single-invocation cron vs
+serverless timeout; reminder recipient = first workspace member; spending trend
+approximates (no price history); the subscription form still has no way to clear
+a category back to "None" once one is set; timezone dropdown is a plain Select over ~400 IANA zones
 (typeahead works; a Command combobox is future polish); DESIGN.md category hues #C9A0F5 (AI Tools)
 vs #6FA8F5 (Dev & Infra)
 are near-identical under red-green color blindness — mitigated everywhere by

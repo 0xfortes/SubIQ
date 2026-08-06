@@ -4,6 +4,44 @@ import { SUPPORTED_CURRENCIES } from "@/lib/money";
 
 const MAX_AMOUNT_MINOR = 100_000_000; // $1M — sanity bound, not a feature.
 
+export const CATEGORY_NAME_MAX = 40;
+
+/**
+ * A user-authored category name. Sanitized by CONSTRUCTION, not by escaping:
+ * the value must start alphanumeric and may then contain only letters/digits
+ * from any script plus a short punctuation set. Control characters, bidi
+ * overrides (Cf), angle brackets, quotes and backslashes match none of these
+ * classes, so a markup or homoglyph payload can never be stored in the first
+ * place. Display is React text (auto-escaped) and the URL only ever sees the
+ * derived `[a-z0-9-]` slug — see lib/slug.ts.
+ */
+const categoryNameSchema = z
+  .string()
+  .transform((value) => value.normalize("NFC").replace(/\s+/g, " ").trim())
+  .pipe(
+    z
+      .string()
+      .min(1, "Enter a category name")
+      .max(CATEGORY_NAME_MAX, `Use ${CATEGORY_NAME_MAX} characters or fewer`)
+      .regex(
+        /^[\p{L}\p{N}][\p{L}\p{N} &'+./-]*$/u,
+        "Use letters, numbers, spaces and & ' + . / -",
+      ),
+  );
+
+// An existing category and a new name are two answers to one question.
+const CATEGORY_CHOICE_ERROR = {
+  message: "Pick an existing category or name a new one, not both",
+  path: ["categoryName"],
+};
+
+function categoryChoiceIsUnambiguous(value: {
+  categoryId?: string;
+  categoryName?: string;
+}): boolean {
+  return !(value.categoryId && value.categoryName);
+}
+
 const subscriptionFields = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   vendor: z.string().trim().max(100).optional(),
@@ -20,6 +58,9 @@ const subscriptionFields = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/, "Use a #RRGGBB hex color")
     .optional(),
   categoryId: z.uuid().optional(),
+  // "Other" on the form: name a category instead of picking one. The service
+  // reuses an existing match before creating anything.
+  categoryName: categoryNameSchema.optional(),
   amountMinor: z.number().int().min(0).max(MAX_AMOUNT_MINOR),
   // A real enum, not just an ISO-4217-shaped string: an unsupported code would
   // be stored and then silently treated 1:1 by the FX layer (wrong totals).
@@ -34,11 +75,15 @@ const subscriptionFields = z.object({
   trialEndsAt: z.coerce.date().optional(),
 });
 
-export const createSubscriptionSchema = subscriptionFields;
+export const createSubscriptionSchema = subscriptionFields.refine(
+  categoryChoiceIsUnambiguous,
+  CATEGORY_CHOICE_ERROR,
+);
 
-export const updateSubscriptionSchema = subscriptionFields.partial().extend({
-  id: z.uuid(),
-});
+export const updateSubscriptionSchema = subscriptionFields
+  .partial()
+  .extend({ id: z.uuid() })
+  .refine(categoryChoiceIsUnambiguous, CATEGORY_CHOICE_ERROR);
 
 export const subscriptionIdSchema = z.object({ id: z.uuid() });
 

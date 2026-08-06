@@ -25,13 +25,16 @@ export async function regenerateInsights(
       select: {
         id: true,
         name: true,
+        // vendor/url are identification fallbacks for the service catalog
+        // ("Family plan" billed by "Netflix" still resolves).
+        vendor: true,
+        url: true,
         amountMinor: true,
         currency: true,
         interval: true,
         intervalCount: true,
         status: true,
         trialEndsAt: true,
-        category: { select: { id: true, name: true } },
       },
     }),
   ]);

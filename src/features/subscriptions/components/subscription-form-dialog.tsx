@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createSubscriptionAction, updateSubscriptionAction } from "../actions";
+import { CATEGORY_NAME_MAX } from "../schemas";
 import type { SubscriptionRow } from "../queries";
 
 const INTERVAL_LABELS: Record<BillingInterval, string> = {
@@ -42,10 +43,17 @@ const STATUS_LABELS: Record<SubscriptionStatus, string> = {
   [SubscriptionStatus.CANCELLED]: "Cancelled",
 };
 
+/**
+ * Sentinel for the "Other…" option. Radix Select needs a non-empty value, and
+ * a UUID-shaped id can never collide with it.
+ */
+const OTHER_CATEGORY = "__other__";
+
 interface FormValues {
   name: string;
   vendor: string;
   categoryId: string;
+  categoryName: string;
   amount: string;
   currency: string;
   interval: BillingInterval;
@@ -80,6 +88,7 @@ function initialValues(
       name: "",
       vendor: "",
       categoryId: "",
+      categoryName: "",
       amount: "",
       currency: defaultCurrency,
       interval: BillingInterval.MONTH,
@@ -95,6 +104,7 @@ function initialValues(
     name: subscription.name,
     vendor: subscription.vendor ?? "",
     categoryId: subscription.categoryId ?? "",
+    categoryName: "",
     amount: formatMoneyInput(subscription.amountMinor, subscription.currency),
     currency: subscription.currency,
     interval: subscription.interval,
@@ -133,6 +143,8 @@ export function SubscriptionFormDialog({
   }, [open, defaults, reset]);
 
   const status = watch("status");
+  const categoryChoice = watch("categoryId");
+  const namingCategory = categoryChoice === OTHER_CATEGORY;
   const editing = Boolean(subscription);
 
   async function onSubmit(values: FormValues) {
@@ -143,10 +155,14 @@ export function SubscriptionFormDialog({
       });
       return;
     }
+    // The two category fields are mutually exclusive — the server rejects
+    // both at once, so send exactly the one the user answered with.
+    const namedCategory = values.categoryId === OTHER_CATEGORY;
     const payload = {
       name: values.name,
       vendor: values.vendor || undefined,
-      categoryId: values.categoryId || undefined,
+      categoryId: namedCategory ? undefined : values.categoryId || undefined,
+      categoryName: namedCategory ? values.categoryName : undefined,
       amountMinor,
       currency: values.currency,
       interval: values.interval,
@@ -262,10 +278,10 @@ export function SubscriptionFormDialog({
                 control={control}
                 name="categoryId"
                 render={({ field }) => (
-                  <Select
-                    value={field.value || undefined}
-                    onValueChange={field.onChange}
-                  >
+                  // Controlled with "" for "no category" — passing undefined
+                  // would make the field uncontrolled until first pick, which
+                  // React warns about the moment a user selects one.
+                  <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger id="sub-category" className="w-full">
                       <SelectValue placeholder="None" />
                     </SelectTrigger>
@@ -275,12 +291,38 @@ export function SubscriptionFormDialog({
                           {category.name}
                         </SelectItem>
                       ))}
+                      <SelectItem value={OTHER_CATEGORY}>Other…</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
             </div>
           </div>
+
+          {namingCategory ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sub-category-name">New category</Label>
+              <Input
+                id="sub-category-name"
+                placeholder="Streaming"
+                autoFocus
+                maxLength={CATEGORY_NAME_MAX}
+                aria-invalid={Boolean(errors.categoryName)}
+                {...register("categoryName", {
+                  required: "Name the new category",
+                })}
+              />
+              {errors.categoryName ? (
+                <p role="alert" className="text-rose text-xs">
+                  {errors.categoryName.message}
+                </p>
+              ) : (
+                <p className="text-faint text-[11px]">
+                  Reuses an existing category if the name already matches one.
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">

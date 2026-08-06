@@ -1,5 +1,8 @@
+import { fallbackColor } from "@/lib/colors";
 import { db } from "@/lib/db";
 import { computeNextRenewalAt } from "@/lib/recurrence";
+import { categorySlug } from "@/lib/slug";
+import type { Prisma } from "@/generated/prisma/client";
 import type {
   CreateSubscriptionInput,
   UpdateSubscriptionInput,
@@ -18,57 +21,130 @@ export class NotFoundError extends Error {
   }
 }
 
+/** A rule the user can fix — its message is safe to show them verbatim. */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+/**
+ * Free-text category names would otherwise let one workspace grow rows
+ * without bound. Well above any real personal setup (six are seeded).
+ */
+const MAX_CATEGORIES_PER_WORKSPACE = 50;
+
 function emptyToNull(value: string | undefined): string | null {
   return value ? value : null;
 }
 
 /**
- * Never trust a client-supplied categoryId: verify it names a live category
- * in THIS workspace before writing it to a subscription. Prevents a
- * cross-tenant reference — and the category name/color leak a joined read
- * would then expose. Returns the owned id, or null when unset.
+ * Find or create the category a user named via "Other". Reuses an existing
+ * category with the same slug rather than creating a near-duplicate, so
+ * "Streaming" and "streaming " converge on one row.
  */
-async function resolveCategoryId(
+async function findOrCreateCategory(
+  tx: Prisma.TransactionClient,
   workspaceId: string,
-  categoryId: string | null | undefined,
+  name: string,
+): Promise<string> {
+  const slug = categorySlug(name);
+
+  // @@unique([workspaceId, slug]) ignores deletedAt, so an archived category
+  // must be revived — creating over it would violate the constraint.
+  const existing = await tx.category.findFirst({
+    where: { workspaceId, slug },
+    select: { id: true, deletedAt: true },
+  });
+  if (existing) {
+    if (existing.deletedAt) {
+      await tx.category.update({
+        where: { id: existing.id },
+        data: { deletedAt: null },
+      });
+    }
+    return existing.id;
+  }
+
+  const count = await tx.category.count({
+    where: { workspaceId, deletedAt: null },
+  });
+  if (count >= MAX_CATEGORIES_PER_WORKSPACE) {
+    throw new ValidationError(
+      `You've reached the limit of ${MAX_CATEGORIES_PER_WORKSPACE} categories.`,
+    );
+  }
+
+  // fallbackColor draws from the DESIGN.md category hue family and is
+  // deterministic per name, so a category's color never shifts between runs.
+  // A concurrent create of the same slug hits the unique constraint and rolls
+  // the whole transaction back; the retry then finds the winner and reuses it.
+  const created = await tx.category.create({
+    data: { workspaceId, name, slug, color: fallbackColor(name) },
+    select: { id: true },
+  });
+  return created.id;
+}
+
+/**
+ * Resolve the client's category choice to an owned category id, or null.
+ *
+ * Never trust a client-supplied categoryId: verify it names a live category
+ * in THIS workspace. Prevents a cross-tenant reference — and the category
+ * name/color leak a joined read would then expose. A categoryName instead
+ * creates (or reuses) a category inside this workspace, so the same
+ * guarantee holds by construction.
+ */
+async function resolveCategory(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  choice: { categoryId?: string | null; categoryName?: string | null },
 ): Promise<string | null> {
-  if (!categoryId) return null;
-  const category = await db.category.findFirst({
-    where: { id: categoryId, workspaceId, deletedAt: null },
+  if (choice.categoryName) {
+    return findOrCreateCategory(tx, workspaceId, choice.categoryName);
+  }
+  if (!choice.categoryId) return null;
+  const category = await tx.category.findFirst({
+    where: { id: choice.categoryId, workspaceId, deletedAt: null },
     select: { id: true },
   });
   if (!category) throw new NotFoundError("Category not found");
   return category.id;
 }
 
+// Category resolution can CREATE a row, so it shares the subscription's
+// transaction — a failed insert must not leave an orphan category behind.
 export async function createSubscription(
   workspaceId: string,
   input: CreateSubscriptionInput,
 ) {
-  const categoryId = await resolveCategoryId(workspaceId, input.categoryId);
-  return db.subscription.create({
-    data: {
-      workspaceId,
-      categoryId,
-      name: input.name,
-      vendor: emptyToNull(input.vendor),
-      url: emptyToNull(input.url),
-      notes: emptyToNull(input.notes),
-      color: input.color ?? null,
-      amountMinor: input.amountMinor,
-      currency: input.currency,
-      interval: input.interval,
-      intervalCount: input.intervalCount,
-      anchorDate: input.anchorDate,
-      nextRenewalAt: computeNextRenewalAt(
-        input.anchorDate,
-        input.interval,
-        input.intervalCount,
-        new Date(),
-      ),
-      status: input.status,
-      trialEndsAt: input.trialEndsAt ?? null,
-    },
+  return db.$transaction(async (tx) => {
+    const categoryId = await resolveCategory(tx, workspaceId, input);
+    return tx.subscription.create({
+      data: {
+        workspaceId,
+        categoryId,
+        name: input.name,
+        vendor: emptyToNull(input.vendor),
+        url: emptyToNull(input.url),
+        notes: emptyToNull(input.notes),
+        color: input.color ?? null,
+        amountMinor: input.amountMinor,
+        currency: input.currency,
+        interval: input.interval,
+        intervalCount: input.intervalCount,
+        anchorDate: input.anchorDate,
+        nextRenewalAt: computeNextRenewalAt(
+          input.anchorDate,
+          input.interval,
+          input.intervalCount,
+          new Date(),
+        ),
+        status: input.status,
+        trialEndsAt: input.trialEndsAt ?? null,
+      },
+    });
   });
 }
 
@@ -77,51 +153,57 @@ export async function updateSubscription(
   input: UpdateSubscriptionInput,
 ) {
   const { id, ...changes } = input;
-  const existing = await db.subscription.findFirst({
-    where: { id, workspaceId, deletedAt: null },
-  });
-  if (!existing) throw new NotFoundError();
+  return db.$transaction(async (tx) => {
+    const existing = await tx.subscription.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundError();
 
-  // Reassignment must stay within the workspace (never trust client IDs).
-  if (changes.categoryId !== undefined) {
-    await resolveCategoryId(workspaceId, changes.categoryId);
-  }
+    // Only touch the category when the client actually sent a choice —
+    // and resolve it, so reassignment stays inside the workspace whether it
+    // names an existing category or creates one.
+    const categoryTouched =
+      changes.categoryId !== undefined || changes.categoryName !== undefined;
+    const categoryId = categoryTouched
+      ? await resolveCategory(tx, workspaceId, changes)
+      : undefined;
 
-  const anchorDate = changes.anchorDate ?? existing.anchorDate;
-  const interval = changes.interval ?? existing.interval;
-  const intervalCount = changes.intervalCount ?? existing.intervalCount;
+    const anchorDate = changes.anchorDate ?? existing.anchorDate;
+    const interval = changes.interval ?? existing.interval;
+    const intervalCount = changes.intervalCount ?? existing.intervalCount;
 
-  return db.subscription.update({
-    where: { id: existing.id },
-    data: {
-      ...(changes.name !== undefined && { name: changes.name }),
-      ...(changes.vendor !== undefined && {
-        vendor: emptyToNull(changes.vendor),
-      }),
-      ...(changes.url !== undefined && { url: emptyToNull(changes.url) }),
-      ...(changes.notes !== undefined && { notes: emptyToNull(changes.notes) }),
-      ...(changes.color !== undefined && { color: changes.color }),
-      ...(changes.categoryId !== undefined && {
-        categoryId: changes.categoryId,
-      }),
-      ...(changes.amountMinor !== undefined && {
-        amountMinor: changes.amountMinor,
-      }),
-      ...(changes.currency !== undefined && { currency: changes.currency }),
-      ...(changes.status !== undefined && { status: changes.status }),
-      ...(changes.trialEndsAt !== undefined && {
-        trialEndsAt: changes.trialEndsAt,
-      }),
-      interval,
-      intervalCount,
-      anchorDate,
-      nextRenewalAt: computeNextRenewalAt(
-        anchorDate,
+    return tx.subscription.update({
+      where: { id: existing.id },
+      data: {
+        ...(changes.name !== undefined && { name: changes.name }),
+        ...(changes.vendor !== undefined && {
+          vendor: emptyToNull(changes.vendor),
+        }),
+        ...(changes.url !== undefined && { url: emptyToNull(changes.url) }),
+        ...(changes.notes !== undefined && {
+          notes: emptyToNull(changes.notes),
+        }),
+        ...(changes.color !== undefined && { color: changes.color }),
+        ...(categoryId !== undefined && { categoryId }),
+        ...(changes.amountMinor !== undefined && {
+          amountMinor: changes.amountMinor,
+        }),
+        ...(changes.currency !== undefined && { currency: changes.currency }),
+        ...(changes.status !== undefined && { status: changes.status }),
+        ...(changes.trialEndsAt !== undefined && {
+          trialEndsAt: changes.trialEndsAt,
+        }),
         interval,
         intervalCount,
-        new Date(),
-      ),
-    },
+        anchorDate,
+        nextRenewalAt: computeNextRenewalAt(
+          anchorDate,
+          interval,
+          intervalCount,
+          new Date(),
+        ),
+      },
+    });
   });
 }
 

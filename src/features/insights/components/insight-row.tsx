@@ -1,6 +1,12 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight, CalendarClock, Copy, PiggyBank } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  Copy,
+  Layers,
+  PiggyBank,
+} from "lucide-react";
 import { InsightType } from "@/generated/prisma/enums";
 import { formatDay } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -15,10 +21,26 @@ export interface InsightItem {
   currency: string | null;
 }
 
+/**
+ * Chip tone follows DESIGN.md's semantic rule: rose means a problem was
+ * found (paying twice is a mistake), amber means money is about to leave.
+ * An overlap is a suggestion, not either — it gets the neutral brand accent.
+ */
 const TYPE_STYLE: Record<
   InsightType,
   { icon: LucideIcon; chip: string; action: string }
 > = {
+  [InsightType.DUPLICATE_SERVICE]: {
+    icon: Copy,
+    chip: "bg-rose-soft text-rose",
+    action: "Cancel the duplicate",
+  },
+  [InsightType.SERVICE_OVERLAP]: {
+    icon: Layers,
+    chip: "bg-accent-soft text-accent",
+    action: "Compare and pick one",
+  },
+  // Retired — kept only to satisfy the exhaustive Record. See schema.prisma.
   [InsightType.DUPLICATE_CATEGORY]: {
     icon: Copy,
     chip: "bg-rose-soft text-rose",

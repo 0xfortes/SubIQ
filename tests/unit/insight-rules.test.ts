@@ -14,22 +14,22 @@ import {
 const NOW = new Date(Date.UTC(2026, 6, 25));
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const ENTERTAINMENT = { id: "cat-ent", name: "Entertainment" };
-const DESIGN = { id: "cat-design", name: "Design" };
-
 let nextId = 0;
 function sub(overrides: Partial<RuleSubscription> = {}): RuleSubscription {
   nextId += 1;
   return {
     id: `sub-${nextId}`,
-    name: `Service ${nextId}`,
+    // Default names are deliberately unrecognizable AND unique, so a test
+    // only sees a redundancy insight when it asks for one.
+    name: `Unknown Service ${nextId}`,
+    vendor: null,
+    url: null,
     amountMinor: 1000,
     currency: "USD",
     interval: BillingInterval.MONTH,
     intervalCount: 1,
     status: SubscriptionStatus.ACTIVE,
     trialEndsAt: null,
-    category: null,
     ...overrides,
   };
 }
@@ -42,24 +42,16 @@ function ofType(subscriptions: RuleSubscription[], type: InsightType) {
   return compute(subscriptions).filter((c) => c.type === type);
 }
 
-describe("DUPLICATE_CATEGORY", () => {
-  it("flags two active subscriptions sharing a category", () => {
-    const a = sub({
-      name: "Netflix",
-      amountMinor: 1549,
-      category: ENTERTAINMENT,
-    });
-    const b = sub({
-      name: "Spotify",
-      amountMinor: 1099,
-      category: ENTERTAINMENT,
-    });
-    const [insight] = ofType([a, b], InsightType.DUPLICATE_CATEGORY);
+describe("DUPLICATE_SERVICE", () => {
+  it("flags the same service billed twice", () => {
+    const a = sub({ name: "Netflix", amountMinor: 1549 });
+    const b = sub({ name: "Netflix", amountMinor: 1099 });
+    const [insight] = ofType([a, b], InsightType.DUPLICATE_SERVICE);
 
     expect(insight).toBeDefined();
-    expect(insight!.dedupeKey).toBe("duplicate:cat-ent");
-    expect(insight!.title).toBe("2 overlapping Entertainment subscriptions");
-    expect(insight!.body).toContain("Netflix and Spotify both bill");
+    expect(insight!.dedupeKey).toBe("dup-service:netflix");
+    expect(insight!.title).toBe("2 Netflix subscriptions");
+    expect(insight!.body).toContain("you may be paying for it twice");
     // Savings = cheapest monthly equivalent in the default currency.
     expect(insight!.savingsMinor).toBe(1099);
     expect(insight!.currency).toBe("USD");
@@ -68,45 +60,119 @@ describe("DUPLICATE_CATEGORY", () => {
     );
   });
 
-  it("does not flag a single subscription or distinct categories", () => {
-    const single = sub({ category: ENTERTAINMENT });
-    const other = sub({ category: DESIGN });
-    expect(ofType([single, other], InsightType.DUPLICATE_CATEGORY)).toEqual([]);
+  it("sees through plan tiers and vendor/URL spellings", () => {
+    const byTier = ofType(
+      [sub({ name: "Netflix Premium" }), sub({ name: "Netflix" })],
+      InsightType.DUPLICATE_SERVICE,
+    );
+    expect(byTier).toHaveLength(1);
+
+    const byVendor = ofType(
+      [
+        sub({ name: "Family plan", vendor: "Netflix" }),
+        sub({ name: "Netflix" }),
+      ],
+      InsightType.DUPLICATE_SERVICE,
+    );
+    expect(byVendor).toHaveLength(1);
+
+    const byUrl = ofType(
+      [
+        sub({ name: "Movies", url: "https://www.netflix.com/account" }),
+        sub({ name: "Netflix" }),
+      ],
+      InsightType.DUPLICATE_SERVICE,
+    );
+    expect(byUrl).toHaveLength(1);
   });
 
-  it("ignores non-ACTIVE and uncategorized subscriptions", () => {
-    const active = sub({ category: ENTERTAINMENT });
-    const paused = sub({
-      category: ENTERTAINMENT,
-      status: SubscriptionStatus.PAUSED,
-    });
-    const trial = sub({
-      category: ENTERTAINMENT,
-      status: SubscriptionStatus.TRIAL,
-    });
-    const uncategorized = sub();
+  it("catches duplicates of services the catalog doesn't know", () => {
+    // A billing mistake is a billing mistake whether we recognize the brand.
+    const a = sub({ name: "Bob's Gym" });
+    const b = sub({ name: "bobs gym" });
+    const [insight] = ofType([a, b], InsightType.DUPLICATE_SERVICE);
+    expect(insight).toBeDefined();
+    expect(insight!.dedupeKey).toBe("dup-service:bobs gym");
+  });
+
+  it("ignores single subscriptions and non-ACTIVE statuses", () => {
+    const active = sub({ name: "Netflix" });
+    const paused = sub({ name: "Netflix", status: SubscriptionStatus.PAUSED });
+    const trial = sub({ name: "Netflix", status: SubscriptionStatus.TRIAL });
     expect(
-      ofType(
-        [active, paused, trial, uncategorized],
-        InsightType.DUPLICATE_CATEGORY,
-      ),
+      ofType([active, paused, trial], InsightType.DUPLICATE_SERVICE),
+    ).toEqual([]);
+  });
+});
+
+describe("SERVICE_OVERLAP", () => {
+  it("flags different services that do the same job", () => {
+    const netflix = sub({ name: "Netflix", amountMinor: 1549 });
+    const disney = sub({ name: "Disney+", amountMinor: 1099 });
+    const [insight] = ofType([netflix, disney], InsightType.SERVICE_OVERLAP);
+
+    expect(insight).toBeDefined();
+    expect(insight!.dedupeKey).toBe("overlap:VIDEO_STREAMING");
+    expect(insight!.title).toBe("2 subscriptions for video streaming");
+    expect(insight!.body).toContain("Disney+ and Netflix both cover");
+    expect(insight!.savingsMinor).toBe(1099);
+    expect(insight!.currency).toBe("USD");
+  });
+
+  it("does NOT flag services that merely share a category", () => {
+    // The regression this rule exists for: Netflix and Spotify are both
+    // "Entertainment" and overlap in nothing.
+    const netflix = sub({ name: "Netflix" });
+    const spotify = sub({ name: "Spotify" });
+    expect(ofType([netflix, spotify], InsightType.SERVICE_OVERLAP)).toEqual([]);
+
+    // Same shape, across other real pairings that used to be false positives.
+    const notion = sub({ name: "Notion" });
+    const todoist = sub({ name: "Todoist" });
+    const onePassword = sub({ name: "1Password" });
+    expect(
+      ofType([notion, todoist, onePassword], InsightType.SERVICE_OVERLAP),
     ).toEqual([]);
   });
 
-  it("collapses long name lists and uses 'all bill' for 3+", () => {
-    const members = ["A", "B", "C", "D", "E"].map((name) =>
-      sub({ name, category: ENTERTAINMENT }),
+  it("stays silent on services it cannot identify", () => {
+    const a = sub({ name: "Bob's Gym" });
+    const b = sub({ name: "Local Newspaper" });
+    expect(ofType([a, b], InsightType.SERVICE_OVERLAP)).toEqual([]);
+  });
+
+  it("counts a service once, so a duplicate is never also an overlap", () => {
+    const cheap = sub({ name: "Netflix", amountMinor: 500 });
+    const dear = sub({ name: "Netflix", amountMinor: 1549 });
+    const disney = sub({ name: "Disney+", amountMinor: 1099 });
+    const [overlap] = ofType(
+      [cheap, dear, disney],
+      InsightType.SERVICE_OVERLAP,
     );
-    const [insight] = ofType(members, InsightType.DUPLICATE_CATEGORY);
-    expect(insight!.title).toBe("5 overlapping Entertainment subscriptions");
-    expect(insight!.body).toContain("A, B, C, and 2 more all bill");
+
+    // Two distinct SERVICES, not three subscriptions.
+    expect(overlap!.title).toBe("2 subscriptions for video streaming");
+    expect(overlap!.subscriptionIds).toHaveLength(2);
+    // The duplicate insight already claims the $5 row; the overlap must not
+    // claim it a second time, or the recoverable total double-counts.
+    expect(overlap!.subscriptionIds).toContain(cheap.id);
+    expect(overlap!.subscriptionIds).not.toContain(dear.id);
+  });
+
+  it("collapses long name lists and uses 'all cover' for 3+", () => {
+    const members = ["Netflix", "Disney+", "Hulu", "Max", "Peacock"].map(
+      (name) => sub({ name }),
+    );
+    const [insight] = ofType(members, InsightType.SERVICE_OVERLAP);
+    expect(insight!.title).toBe("5 subscriptions for video streaming");
+    expect(insight!.body).toContain("Disney+, Hulu, Max, and 2 more all cover");
   });
 
   it("converts foreign-currency members for the savings figure", () => {
     // Two €10/mo subs → cheapest converts to $10.87/mo in the base currency.
-    const a = sub({ currency: "EUR", category: ENTERTAINMENT });
-    const b = sub({ currency: "EUR", category: ENTERTAINMENT });
-    const [insight] = ofType([a, b], InsightType.DUPLICATE_CATEGORY);
+    const a = sub({ name: "Netflix", currency: "EUR" });
+    const b = sub({ name: "Disney+", currency: "EUR" });
+    const [insight] = ofType([a, b], InsightType.SERVICE_OVERLAP);
     expect(insight!.savingsMinor).toBe(1087);
     expect(insight!.currency).toBe("USD");
     expect(insight!.body).toContain("$10.87");
@@ -115,13 +181,27 @@ describe("DUPLICATE_CATEGORY", () => {
   it("normalizes mixed cadences to monthly equivalents for the savings figure", () => {
     // $120/yr = $10/mo — cheaper than the $15.49/mo sibling.
     const yearly = sub({
+      name: "Disney+",
       amountMinor: 12000,
       interval: BillingInterval.YEAR,
-      category: ENTERTAINMENT,
     });
-    const monthly = sub({ amountMinor: 1549, category: ENTERTAINMENT });
-    const [insight] = ofType([yearly, monthly], InsightType.DUPLICATE_CATEGORY);
+    const monthly = sub({ name: "Netflix", amountMinor: 1549 });
+    const [insight] = ofType([yearly, monthly], InsightType.SERVICE_OVERLAP);
     expect(insight!.savingsMinor).toBe(1000);
+  });
+
+  it("separates purposes that share a category", () => {
+    // AI Tools: two assistants overlap, image generation does not join them.
+    const chatgpt = sub({ name: "ChatGPT Plus" });
+    const claude = sub({ name: "Claude Pro" });
+    const midjourney = sub({ name: "Midjourney" });
+    const insights = ofType(
+      [chatgpt, claude, midjourney],
+      InsightType.SERVICE_OVERLAP,
+    );
+    expect(insights).toHaveLength(1);
+    expect(insights[0]!.dedupeKey).toBe("overlap:AI_ASSISTANT");
+    expect(insights[0]!.subscriptionIds).not.toContain(midjourney.id);
   });
 });
 
@@ -209,8 +289,8 @@ describe("TRIAL_ENDING", () => {
 describe("computeInsights determinism", () => {
   it("produces identical output regardless of input order", () => {
     const subs = [
-      sub({ name: "Netflix", amountMinor: 1549, category: ENTERTAINMENT }),
-      sub({ name: "Spotify", amountMinor: 1099, category: ENTERTAINMENT }),
+      sub({ name: "Netflix", amountMinor: 1549 }),
+      sub({ name: "Disney+", amountMinor: 1099 }),
       sub({ name: "Figma", amountMinor: 1500 }),
     ];
     const forward = compute(subs);

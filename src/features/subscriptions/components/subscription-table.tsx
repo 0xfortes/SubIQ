@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useOptimistic, useTransition } from "react";
-import { MoreHorizontal, RotateCcw, Star } from "lucide-react";
+import { MoreHorizontal, Plus, RotateCcw, Star } from "lucide-react";
 import { toast } from "sonner";
 import { convertMinor, formatMoney } from "@/lib/money";
 import { formatDay, todayInZone } from "@/lib/dates";
@@ -42,6 +42,8 @@ interface SubscriptionTableProps {
   rows: SubscriptionRow[];
   onEdit: (row: SubscriptionRow) => void;
   emptyMessage: string;
+  /** Empty-state CTA. Omitted when the view is empty only because of filters. */
+  onAdd?: () => void;
   /** Archived view: per-row Restore replaces favorite/menu/selection. */
   archived?: boolean;
   /** User's IANA timezone — the "today" reference for the renewal column. */
@@ -62,6 +64,7 @@ export function SubscriptionTable({
   rows,
   onEdit,
   emptyMessage,
+  onAdd,
   archived = false,
   timeZone = "UTC",
   defaultCurrency,
@@ -215,6 +218,12 @@ export function SubscriptionTable({
     return (
       <div className="px-4 py-10 text-center">
         <p className="text-muted text-[13px]">{emptyMessage}</p>
+        {onAdd ? (
+          <Button size="sm" className="mt-3.5" onClick={onAdd}>
+            <Plus size={14} aria-hidden data-icon="inline-start" />
+            Add your first subscription
+          </Button>
+        ) : null}
       </div>
     );
   }

@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { ListFilters } from "../schemas";
 import type { SubscriptionRow } from "../queries";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
@@ -30,9 +28,17 @@ const STATUS_LABEL: Record<ListFilters["status"], string> = {
   archived: "Archived",
 };
 
+/** No search, no category, no status narrowing — a genuinely empty account. */
+function isUnfiltered(filters: ListFilters): boolean {
+  return !filters.q && !filters.category && filters.status === "all";
+}
+
 function emptyMessage(filters: ListFilters): string {
   if (filters.status === "archived" && !filters.q && !filters.category) {
     return "No archived subscriptions.";
+  }
+  if (isUnfiltered(filters)) {
+    return "No subscriptions yet. Start tracking your recurring spend.";
   }
   const parts: string[] = [];
   if (filters.q) parts.push(`matching “${filters.q}”`);
@@ -40,9 +46,6 @@ function emptyMessage(filters: ListFilters): string {
   else if (filters.status !== "all")
     parts.push(`with status ${STATUS_LABEL[filters.status]}`);
   if (filters.category) parts.push(`in this category`);
-  if (parts.length === 0) {
-    return "No subscriptions yet. Add your first to start tracking renewals.";
-  }
   return `No subscriptions ${parts.join(" ")}. Clear the search or switch filters.`;
 }
 
@@ -58,6 +61,20 @@ export function SubscriptionsView({
   const pathname = usePathname();
   const [dialogOpen, setDialogOpen] = useState(openNew);
   const [editing, setEditing] = useState<SubscriptionRow | null>(null);
+
+  // ?new=1 must open the dialog even when we're ALREADY on this route: the
+  // topbar link is then a soft navigation that never remounts this component,
+  // so the initializer above doesn't run again. Adjusted during render rather
+  // than in an effect (React's documented pattern for reacting to a prop
+  // change) — an effect would render the closed dialog first, and deriving
+  // `open` straight from the URL would keep it open until router.replace
+  // round-trips on close. closeDialog strips the param, which is what lets a
+  // second click re-open.
+  const [lastOpenNew, setLastOpenNew] = useState(openNew);
+  if (openNew !== lastOpenNew) {
+    setLastOpenNew(openNew);
+    if (openNew) setDialogOpen(true);
+  }
 
   const categoryName = filters.category
     ? categories.find((c) => c.slug === filters.category)?.name
@@ -82,17 +99,11 @@ export function SubscriptionsView({
             {rows.length} {rows.length === 1 ? "subscription" : "subscriptions"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <SubscriptionsToolbar
-            q={filters.q}
-            status={filters.status}
-            sort={filters.sort}
-          />
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
-            <Plus size={14} aria-hidden data-icon="inline-start" />
-            Add subscription
-          </Button>
-        </div>
+        <SubscriptionsToolbar
+          q={filters.q}
+          status={filters.status}
+          sort={filters.sort}
+        />
       </header>
 
       <SubscriptionTable
@@ -102,6 +113,9 @@ export function SubscriptionsView({
           setDialogOpen(true);
         }}
         emptyMessage={emptyMessage(filters)}
+        // Only on a truly empty account — never alongside a filtered-empty
+        // view, and never as a second copy of the topbar's Add button.
+        onAdd={isUnfiltered(filters) ? () => setDialogOpen(true) : undefined}
         archived={filters.status === "archived"}
         timeZone={timeZone}
         defaultCurrency={defaultCurrency}

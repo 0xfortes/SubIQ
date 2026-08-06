@@ -38,7 +38,16 @@ enum BillingInterval {
 }
 
 enum InsightType {
+  // RETIRED 2026-08-06: redundancy used to be inferred from a shared category,
+  // which called Netflix and Spotify duplicates. Replaced by the two values
+  // below, which reason about what a service is FOR (lib/services.ts). The
+  // value stays because Postgres cannot drop an enum value; no code emits it,
+  // and regenerateInsights prunes the last rows that carried it.
   DUPLICATE_CATEGORY
+  // The same service billed twice.
+  DUPLICATE_SERVICE
+  // Different services doing the same job.
+  SERVICE_OVERLAP
   ANNUAL_SAVINGS
   TRIAL_ENDING
 }

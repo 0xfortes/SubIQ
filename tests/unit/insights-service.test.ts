@@ -16,29 +16,32 @@ import { regenerateInsights } from "@/features/insights/service";
 
 const WORKSPACE = "11111111-1111-7111-8111-111111111111";
 
-function entertainmentPair() {
+/** Two services with the same purpose — one overlap + two annual candidates. */
+function overlappingPair() {
   return [
     {
       id: "sub-a",
       name: "Netflix",
+      vendor: null,
+      url: null,
       amountMinor: 1549,
       currency: "USD",
       interval: BillingInterval.MONTH,
       intervalCount: 1,
       status: SubscriptionStatus.ACTIVE,
       trialEndsAt: null,
-      category: { id: "cat-ent", name: "Entertainment" },
     },
     {
       id: "sub-b",
-      name: "Spotify",
+      name: "Disney+",
+      vendor: null,
+      url: null,
       amountMinor: 1099,
       currency: "USD",
       interval: BillingInterval.MONTH,
       intervalCount: 1,
       status: SubscriptionStatus.ACTIVE,
       trialEndsAt: null,
-      category: { id: "cat-ent", name: "Entertainment" },
     },
   ];
 }
@@ -54,7 +57,7 @@ beforeEach(() => {
 
 describe("regenerateInsights", () => {
   it("never touches status or dismissedAt in the upsert update branch", async () => {
-    dbMock.subscription.findMany.mockResolvedValue(entertainmentPair());
+    dbMock.subscription.findMany.mockResolvedValue(overlappingPair());
     await regenerateInsights(WORKSPACE);
 
     expect(dbMock.aiInsight.upsert).toHaveBeenCalled();
@@ -69,7 +72,7 @@ describe("regenerateInsights", () => {
   });
 
   it("upserts on the workspace + dedupeKey identity", async () => {
-    dbMock.subscription.findMany.mockResolvedValue(entertainmentPair());
+    dbMock.subscription.findMany.mockResolvedValue(overlappingPair());
     await regenerateInsights(WORKSPACE);
 
     const keys = dbMock.aiInsight.upsert.mock.calls.map(
@@ -77,18 +80,18 @@ describe("regenerateInsights", () => {
     );
     expect(keys).toContainEqual({
       workspaceId: WORKSPACE,
-      dedupeKey: "duplicate:cat-ent",
+      dedupeKey: "overlap:VIDEO_STREAMING",
     });
     // The pair also yields two annual-switch candidates.
     expect(keys.map((k) => k.dedupeKey).sort()).toEqual([
       "annual:sub-a",
       "annual:sub-b",
-      "duplicate:cat-ent",
+      "overlap:VIDEO_STREAMING",
     ]);
   });
 
   it("prunes exactly the rows whose dedupeKey was not regenerated", async () => {
-    dbMock.subscription.findMany.mockResolvedValue(entertainmentPair());
+    dbMock.subscription.findMany.mockResolvedValue(overlappingPair());
     dbMock.aiInsight.deleteMany.mockResolvedValue({ count: 2 });
 
     const result = await regenerateInsights(WORKSPACE);
@@ -98,7 +101,7 @@ describe("regenerateInsights", () => {
     expect(deleteArgs.where.dedupeKey.notIn.sort()).toEqual([
       "annual:sub-a",
       "annual:sub-b",
-      "duplicate:cat-ent",
+      "overlap:VIDEO_STREAMING",
     ]);
     expect(result).toEqual({ upserted: 3, removed: 2 });
   });
@@ -124,5 +127,14 @@ describe("regenerateInsights", () => {
         where: { workspaceId: WORKSPACE, deletedAt: null },
       }),
     );
+  });
+
+  it("selects the fields the service catalog identifies rows by", async () => {
+    dbMock.subscription.findMany.mockResolvedValue([]);
+    await regenerateInsights(WORKSPACE);
+
+    const select = dbMock.subscription.findMany.mock.calls[0]?.[0]?.select;
+    // Without vendor/url, "Family plan" billed by Netflix is unidentifiable.
+    expect(select).toMatchObject({ name: true, vendor: true, url: true });
   });
 });

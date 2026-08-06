@@ -11,10 +11,10 @@ test("create, edit, archive, and restore a subscription", async ({ page }) => {
   ).toBeVisible();
 
   // Create
-  await page.getByRole("button", { name: "Add subscription" }).click();
+  await page.getByRole("link", { name: "Add subscription" }).click();
   await page.getByLabel("Service").fill(UNIQUE);
   await page.getByLabel("Cost").fill("9.99");
-  await page.getByRole("button", { name: "Add subscription" }).last().click();
+  await page.getByRole("button", { name: "Add subscription" }).click();
   const row = page.getByRole("row", { name: new RegExp(UNIQUE) });
   await expect(row).toBeVisible();
   await expect(row.getByText("$9.99")).toBeVisible();
@@ -117,10 +117,10 @@ test("delete permanently removes a subscription for good", async ({ page }) => {
   const name = `E2E Sub ${Date.now()}-del`;
   await page.goto("/subscriptions");
 
-  await page.getByRole("button", { name: "Add subscription" }).click();
+  await page.getByRole("link", { name: "Add subscription" }).click();
   await page.getByLabel("Service").fill(name);
   await page.getByLabel("Cost").fill("5.00");
-  await page.getByRole("button", { name: "Add subscription" }).last().click();
+  await page.getByRole("button", { name: "Add subscription" }).click();
   const row = page.getByRole("row", { name: new RegExp(name) });
   await expect(row).toBeVisible();
 
@@ -137,6 +137,66 @@ test("delete permanently removes a subscription for good", async ({ page }) => {
   // Hard delete, not archive: it is absent from the archived view too.
   await page.getByRole("button", { name: "Archived" }).click();
   await expect(page.getByRole("row", { name: new RegExp(name) })).toBeHidden();
+});
+
+test('"Other" creates a custom category and reuses it afterwards', async ({
+  page,
+}) => {
+  // A FIXED category name on purpose: the first run creates it, every later
+  // run must reuse the same row rather than piling up near-duplicates.
+  const CATEGORY = "E2E Custom";
+  const name = `E2E Sub ${Date.now()}-cat`;
+
+  async function addWithCustomCategory(subName: string) {
+    await page.goto("/subscriptions");
+    await page.getByRole("link", { name: "Add subscription" }).click();
+    await page.getByLabel("Service").fill(subName);
+    await page.getByLabel("Cost").fill("7.00");
+    await page.getByRole("combobox", { name: "Category" }).click();
+    await page.getByRole("option", { name: "Other…" }).click();
+    await page.getByLabel("New category").fill(CATEGORY);
+    await page.getByRole("button", { name: "Add subscription" }).click();
+    const row = page.getByRole("row", { name: new RegExp(subName) });
+    await expect(row).toBeVisible();
+    await expect(row.getByText(CATEGORY)).toBeVisible();
+    return row;
+  }
+
+  await addWithCustomCategory(name);
+
+  // The category is real: it scopes the list through the URL like any other.
+  const slug = "e2e-custom";
+  await page.goto(`/subscriptions?category=${slug}`);
+  await expect(page.getByRole("row", { name: new RegExp(name) })).toBeVisible();
+
+  // Naming it again reuses the category — the picker must not grow a second
+  // "E2E Custom" entry.
+  const second = `${name}-2`;
+  await addWithCustomCategory(second);
+
+  await page.getByRole("link", { name: "Add subscription" }).click();
+  const categoryPicker = page.getByRole("combobox", { name: "Category" });
+  await expect(categoryPicker).toHaveText("None");
+  await categoryPicker.click();
+  await expect(page.getByRole("option", { name: CATEGORY })).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // Longest name first: `name` is a prefix of `second`, so its row regex
+  // would match both rows while the second one still exists.
+  for (const subName of [second, name]) {
+    await page.goto("/subscriptions");
+    const row = page.getByRole("row", { name: new RegExp(subName) });
+    await row
+      .getByRole("button", { name: `Actions for ${subName}`, exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: "Delete permanently" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Delete permanently" })
+      .click();
+    await expect(row).toBeHidden();
+  }
 });
 
 test("unauthenticated users are redirected to login", async ({ browser }) => {

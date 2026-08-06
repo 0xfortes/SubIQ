@@ -8,7 +8,10 @@
  * so the layout is identical whether or not a logo matches.
  *
  * Adding a service: import its `si*` export, then `register(icon, ...aliases)`.
+ * Name matching lives in lib/service-alias.ts, shared with lib/services.ts so
+ * the two registries can't drift.
  */
+import { createAliasRegistry } from "@/lib/service-alias";
 import {
   si1password,
   siAnthropic,
@@ -81,47 +84,8 @@ export interface Brand {
   path: string;
 }
 
-const REGISTRY: Record<string, Brand> = {};
-
-function register(icon: Brand, ...aliases: string[]): void {
-  for (const alias of aliases) REGISTRY[normalize(alias)] = icon;
-}
-
-/** Lowercase, strip punctuation, collapse whitespace. */
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Plan-tier words stripped from the end of a name before matching. */
-const STOPWORDS = new Set([
-  "premium",
-  "plus",
-  "pro",
-  "family",
-  "individual",
-  "personal",
-  "student",
-  "team",
-  "teams",
-  "business",
-  "enterprise",
-  "subscription",
-  "membership",
-  "monthly",
-  "annual",
-  "annually",
-  "yearly",
-  "plan",
-  "standard",
-  "basic",
-  "unlimited",
-  "cloud",
-  "app",
-]);
+const REGISTRY = createAliasRegistry<Brand>();
+const register = REGISTRY.register;
 
 register(siNetflix, "netflix");
 register(siSpotify, "spotify");
@@ -185,23 +149,7 @@ register(siPlanetscale, "planetscale");
 register(siRailway, "railway");
 register(siRender, "render");
 
-/**
- * Resolve a subscription name to a known brand, or null. Tries the exact
- * normalized name, then progressively shorter token prefixes with plan-tier
- * words stripped ("Spotify Premium" -> "spotify", "GitHub Team" -> "github").
- */
+/** Resolve a subscription name to a known brand, or null. */
 export function resolveBrand(name: string): Brand | null {
-  const norm = normalize(name);
-  if (!norm) return null;
-  if (REGISTRY[norm]) return REGISTRY[norm];
-
-  const tokens = norm.split(" ");
-  let end = tokens.length;
-  while (end > 1 && STOPWORDS.has(tokens[end - 1]!)) end--;
-  for (let len = end; len >= 1; len--) {
-    const key = tokens.slice(0, len).join(" ");
-    const hit = REGISTRY[key];
-    if (hit) return hit;
-  }
-  return null;
+  return REGISTRY.resolve(name);
 }

@@ -37,6 +37,8 @@ export type BillingInterval = (typeof BillingInterval)[keyof typeof BillingInter
 
 export const InsightType = {
   DUPLICATE_CATEGORY: 'DUPLICATE_CATEGORY',
+  DUPLICATE_SERVICE: 'DUPLICATE_SERVICE',
+  SERVICE_OVERLAP: 'SERVICE_OVERLAP',
   ANNUAL_SAVINGS: 'ANNUAL_SAVINGS',
   TRIAL_ENDING: 'TRIAL_ENDING'
 } as const
