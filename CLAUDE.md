@@ -139,6 +139,28 @@ email).
   merged into `settings-form.tsx` (both cards kept, one submit, "Unsaved changes"
   hint). Insight regeneration now runs only when the currency actually changed.
 
+**Subscription form dialog redesigned (2026-08-07):** replaced the uniform
+2-column grid of nine equal-weight inputs with a three-tier composer — see the
+new **Form dialog** section in DESIGN.md, which is the spec of record for any
+future create/edit dialog. Identity header (live `ServiceIcon size="lg"`
+resolving from `lib/brands.ts` as you type + borderless 20px title), 30px mono
+amount with `currencySymbol()` prefix, quiet detail rows, progressive
+disclosure for notes/website, and a footer showing the REAL computed renewal
+(`computeNextRenewalAt` + `monthlyEquivalentMinor`) so the preview can't
+disagree with what saves. New `components/ui/segmented-control.tsx` (Radix
+RadioGroup + sliding indicator) replaces the interval and status Selects;
+`ServiceIcon`/`ServiceAvatar` gained an `lg` (44px) size; `lib/money.ts` gained
+`currencySymbol()`. The shared `dialog.tsx` primitive was deliberately NOT
+touched (⌘K palette + delete confirm share it) — all styling is className
+overrides on `DialogContent`. The `url` field is now reachable in the UI; it was
+already in `createSubscriptionSchema` (http(s)-only), so this widened no
+server-side surface. **Known nit:** Netflix-red `#E50914` has luminance 0.22,
+under `isDarkColor`'s 0.32 threshold in `lib/colors.ts`, so its logo renders in
+light neutral rather than brand red despite passing contrast (4.8:1) — the
+threshold is tuned for near-black brands and catches saturated reds as
+collateral. Left alone because it's app-wide (table, ruler, analytics,
+marketing).
+
 **Also built (post-V1):** `/settings` page (`features/settings/`) — profile
 timezone + workspace default currency, both applied. Load-bearing rule in
 `lib/dates.ts`: renewal dates are CALENDAR DAYS (UTC-midnight encoded,

@@ -200,6 +200,35 @@
   }
 }
 
+/*
+ * App-surface motion. DESIGN.md forbids entrance animations on page content;
+ * this is the narrow exception: a service logo RESOLVING as you type is a
+ * state change worth acknowledging, and it happens at most once or twice per
+ * dialog — rare enough to earn motion, per the animation decision framework.
+ * A keyframe (not a transition) because it's a one-shot on a remounted node.
+ */
+@keyframes brand-pop {
+  from {
+    opacity: 0;
+    /* Never scale(0) — nothing in the real world appears from nothing. */
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.brand-pop {
+  animation: brand-pop 180ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-pop {
+    animation: none;
+  }
+}
+
 /* Data figures: JetBrains Mono + tabular numerals for ALL money, dates,
    counts, and tick labels (money is never set in Inter). */
 @utility font-data {

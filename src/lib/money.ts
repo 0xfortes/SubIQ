@@ -39,6 +39,19 @@ function fractionDigits(currency: string, locale: string): number {
 }
 
 /**
+ * The currency's own symbol ("$", "€", "¥", "CHF"). For amount ENTRY, where
+ * the figure is typed by the user and the symbol sits beside the field as a
+ * static prefix — display amounts always go through formatMoney instead.
+ * Falls back to the code itself if the runtime has no symbol for it.
+ */
+export function currencySymbol(currency: string, locale = "en-US"): string {
+  const part = new Intl.NumberFormat(locale, { style: "currency", currency })
+    .formatToParts(0)
+    .find((p) => p.type === "currency");
+  return part?.value ?? currency;
+}
+
+/**
  * Format a minor-unit amount for display. Handles zero-decimal currencies
  * (JPY: 500 minor units = ¥500) via the currency's own fraction digits.
  */

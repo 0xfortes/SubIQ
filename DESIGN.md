@@ -224,6 +224,60 @@ Empty state: "All caught up. New insights arrive after your next sync."
 - Rows: 1px `line` top borders, white 2.5% hover bg, focusable.
 - Empty state names the failing filter and suggests changing it.
 
+### Form dialog (added 2026-08-07)
+
+The pattern for any dialog that creates or edits a domain record. Reference
+implementation: `features/subscriptions/components/subscription-form-dialog.tsx`.
+
+**Principle: the dialog shows the record being built, not a list of fields.**
+A record the app renders elsewhere (service logo, money, renewal date) is
+rendered here with the _same_ components and the _same_ engines, so the
+composer can never promise something the saved row won't show. Three tiers of
+hierarchy, never a uniform grid of equal-weight inputs:
+
+1. **Identity header** — a 44px `ServiceIcon` (`size="lg"`) beside a borderless
+   20px title input and a 12.5px muted secondary input. The icon resolves live
+   from `lib/brands.ts` as the name is typed; before a name exists it's a dashed
+   placeholder tile. This is the dialog's subject and its only moment of
+   delight.
+2. **Primary figure** — the money. 30px `font-data` (mono, tabular-nums) with a
+   faint `currencySymbol()` prefix and the currency `Select` sized `sm` on the
+   right. Money is never set in Inter, at any size.
+3. **Detail rows** — everything else, as label-left/control-right rows on 1px
+   `line` top borders, min-height 44px, controls borderless until hover
+   (`hover:bg-wash`). Rows, not boxes: this tier must read quieter than the two
+   above. A control too wide for the right rail (4+ segment labels) stacks
+   full-width beneath its label instead of being squeezed.
+
+**Segmented control** (`components/ui/segmented-control.tsx`) replaces a
+`Select` for 2–4 short, mutually exclusive options — one click instead of
+open-then-pick, and every option stays visible. Radix `RadioGroup` underneath
+for arrow-key navigation and correct semantics. The `accent-soft` indicator
+slides via `transition: transform 200ms var(--ease-out-strong)`; a transition,
+not a keyframe, so rapid clicks retarget from wherever it currently is.
+
+**Progressive disclosure** — optional fields (notes, links) sit behind a quiet
+ghost toggle and open automatically when editing a record that already has
+them. Conditional fields (trial end date) appear only when their condition
+holds.
+
+**Live summary footer** — `surface-2` bar with the computed consequence on the
+left (`Renews {date} · {monthly}/mo`, from the real recurrence engine, mono
+figures, renewal dates formatted in UTC per the calendar-day rule) and
+Cancel + one primary action on the right. The footer earns its height by
+answering "what did I just describe?" before the user commits.
+
+**Dates** use the native `<input type="date">`, restyled to sit flush in a row
+with the browser's own indicator retinted. Deliberate: it is fully keyboard
+operable and gets the OS picker on mobile for free. The tradeoff — the display
+format stays locale/browser-controlled — is accepted over hand-rolling a
+calendar and its a11y.
+
+**Motion** — the dialog enters at 200ms `--ease-out-strong` from `zoom-in-95`
+(never `scale(0)`), keeping the centered origin modals should have. The brand
+mark plays a 180ms `.brand-pop` once when a name resolves. Everything collapses
+under `prefers-reduced-motion`.
+
 ### Buttons & inputs
 
 - Primary: accent bg, near-black text (`#101223`), 500 weight, brightness

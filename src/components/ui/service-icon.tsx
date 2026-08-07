@@ -12,12 +12,23 @@ import { ServiceAvatar } from "./service-avatar";
  * Shared by the renewal timeline, subscriptions table, analytics leaderboard,
  * and the marketing preview so they can't drift apart.
  */
-const CHIP = { xs: "size-4", sm: "size-7", md: "size-[30px]" } as const;
-const GLYPH = { xs: "size-2.5", sm: "size-4", md: "size-[15px]" } as const;
+const CHIP = {
+  xs: "size-4",
+  sm: "size-7",
+  md: "size-[30px]",
+  lg: "size-11",
+} as const;
+const GLYPH = {
+  xs: "size-2.5",
+  sm: "size-4",
+  md: "size-[15px]",
+  lg: "size-[22px]",
+} as const;
 const RADIUS = {
   xs: "rounded-[4px]",
   sm: "rounded-[7px]",
   md: "rounded-md",
+  lg: "rounded-[10px]",
 } as const;
 
 export function ServiceIcon({

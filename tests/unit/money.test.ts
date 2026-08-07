@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { BillingInterval } from "@/generated/prisma/enums";
 import {
   convertMinor,
+  currencySymbol,
   formatMoney,
   formatMoneyInput,
   monthlyEquivalentInBaseMinor,
   monthlyEquivalentMinor,
   parseMoneyInput,
+  SUPPORTED_CURRENCIES,
 } from "@/lib/money";
 
 describe("formatMoney", () => {
@@ -36,6 +38,27 @@ describe("formatMoney", () => {
 
   it("rejects non-integer minor amounts", () => {
     expect(() => formatMoney(12.99, "USD")).toThrow(/integer/);
+  });
+});
+
+describe("currencySymbol", () => {
+  it("returns the symbol for common currencies", () => {
+    expect(currencySymbol("USD")).toBe("$");
+    expect(currencySymbol("EUR")).toBe("€");
+    expect(currencySymbol("GBP")).toBe("£");
+    expect(currencySymbol("JPY")).toBe("¥");
+  });
+
+  it("returns something renderable for every supported currency", () => {
+    // CAD/AUD/CHF have no single glyph in en-US — the code itself is the
+    // honest fallback, and the amount field must never render empty.
+    for (const code of SUPPORTED_CURRENCIES) {
+      expect(currencySymbol(code).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("falls back to the code for an unknown currency", () => {
+    expect(currencySymbol("XTS")).toBe("XTS");
   });
 });
 
