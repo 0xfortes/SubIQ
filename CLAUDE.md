@@ -21,15 +21,16 @@ Status section — if they're present.
 
 ---
 
-## Status (last updated 2026-08-06 — keep this section current)
+## Status (last updated 2026-08-07 — keep this section current)
 
-**All five V1 scope items are BUILT and verified** (151 unit tests, 21/21 e2e,
+**All five V1 scope items are BUILT and verified** (185 unit tests, 26/26 e2e,
 typecheck clean, prod build green; lint has one pre-existing react-hook-form
-warning). Post-V1 work is **committed** through `821db26`. A large body of newer
-work is **done + fully verified but UNCOMMITTED in the working tree**, awaiting
-the user's commit: the authenticated home, editable profile name, Sentry
-observability + `nextRenewalAt` index, the **magic-link → email+password auth
-rework**, and the **security-audit remediation** (see the notes below).
+warning in `subscription-form-dialog.tsx` — RHF's `watch()` can't be memoized by
+the React Compiler). **Everything described in this file is COMMITTED** through
+`02a8a73`; the working tree is clean. That includes the authenticated home,
+editable profile name, Sentry observability + `nextRenewalAt` index, the
+magic-link → email+password auth rework, the security-audit remediation, and all
+of the 2026-08-06/07 work below.
 
 1. ✅ Auth — **email + password** (magic link was removed 2026-07-30; see the
    Auth note below). Optional OAuth (Google/GitHub) still supported; personal
@@ -108,7 +109,7 @@ below); dedupeKey grammar `dup-service:{serviceIdentity}` /
 change loses dismissals); reminders are at-most-once (ledger row claimed before
 email).
 
-**UI round from user testing (2026-08-06):**
+**UI round from user testing (2026-08-06 → 08-07):**
 
 - **One Add-subscription entry point.** The Subscriptions page header button was
   removed (the persistent topbar link is the only CTA); an empty account gets an
@@ -259,7 +260,15 @@ hand-maintained — services outside it are invisible to redundancy detection
 so the copy stays suggestive ("if one is enough"); single-invocation cron vs
 serverless timeout; reminder recipient = first workspace member; spending trend
 approximates (no price history); the subscription form still has no way to clear
-a category back to "None" once one is set; timezone dropdown is a plain Select over ~400 IANA zones
+a category back to "None" once one is set; **the subscriptions table overflows a
+390px viewport** (renders ~475px wide) — DESIGN.md specifies it should drop the
+Category and Next-renewal columns ≤760px and that responsive rule was never
+implemented, so phone users scroll the page sideways (found 2026-08-07 while
+screenshotting the form dialog; pre-existing, unrelated to that work);
+**`isDarkColor`'s 0.32 luminance threshold** in `lib/colors.ts` is tuned for
+near-black brands (GitHub, Vercel) and catches saturated reds as collateral —
+Netflix `#E50914` sits at 0.22 so its logo renders light-neutral instead of brand
+red despite passing contrast at 4.8:1, everywhere ServiceIcon is used; timezone dropdown is a plain Select over ~400 IANA zones
 (typeahead works; a Command combobox is future polish); DESIGN.md category hues #C9A0F5 (AI Tools)
 vs #6FA8F5 (Dev & Infra)
 are near-identical under red-green color blindness — mitigated everywhere by
