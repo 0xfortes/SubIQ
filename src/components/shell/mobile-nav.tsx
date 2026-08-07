@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 import { signOutAction } from "@/features/auth";
+import { BrandMark } from "@/components/ui/brand-mark";
 import {
   Sheet,
   SheetContent,
@@ -45,9 +47,22 @@ export function MobileNav({
         side="left"
         className="w-sidebar bg-surface flex flex-col p-0"
       >
-        <SheetHeader className="px-4 pt-4 pb-2">
+        <SheetHeader className="px-2 pt-3 pb-1">
+          {/* The title stays (Radix requires one for the sheet's accessible
+              name) but becomes the way home, mirroring the desktop sidebar.
+              Navigating closes the drawer on its own — `open` is derived from
+              the URL. Sharing "SubIQ home" with the sidebar is safe: that is
+              `hidden md:flex` and this trigger is `md:hidden`, so the two are
+              never in the accessibility tree together. */}
           <SheetTitle className="text-left text-[13px] font-medium tracking-tight">
-            SubIQ
+            <Link
+              href="/"
+              aria-label="SubIQ home"
+              className="hover:bg-wash focus-visible:outline-accent flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              <BrandMark size={20} className="text-accent" />
+              SubIQ
+            </Link>
           </SheetTitle>
         </SheetHeader>
         <SidebarNav insightCount={insightCount} />

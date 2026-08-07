@@ -40,7 +40,16 @@ export function Topbar({
             aria-label="Breadcrumb"
             className="flex items-center gap-1.5 text-xs"
           >
-            <span className="text-faint">SubIQ</span>
+            {/* Breadcrumb root — conventionally clickable, and below 760px
+                (sidebar hidden) this is the only way home. Accessible name is
+                the visible text, deliberately distinct from the sidebar's
+                "SubIQ home" so the two never collide. */}
+            <Link
+              href="/"
+              className="text-faint hover:text-muted focus-visible:outline-accent rounded-sm transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              SubIQ
+            </Link>
             <span className="text-faint">/</span>
             <span className={scope ? "text-muted" : "text-text"}>
               {section}

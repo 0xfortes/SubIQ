@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { signOutAction } from "@/features/auth";
 import { BrandMark } from "@/components/ui/brand-mark";
@@ -14,9 +15,21 @@ interface SidebarProps {
 export function Sidebar({ email, insightCount, categories }: SidebarProps) {
   return (
     <aside className="w-sidebar border-line bg-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r md:flex">
-      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-        <BrandMark size={22} className="text-accent" />
-        <span className="text-[13px] font-medium tracking-tight">SubIQ</span>
+      <div className="px-2 pt-3 pb-2">
+        {/* The way back out of the app. Relative href on purpose — never the
+            production domain, which would break dev and preview deploys and
+            turn a same-origin navigation into a cross-origin one. `/` serves
+            the authenticated overview when signed in, the marketing landing
+            when not. aria-label wins over the descendant content, so the name
+            is "SubIQ home" rather than BrandMark's label plus the text. */}
+        <Link
+          href="/"
+          aria-label="SubIQ home"
+          className="hover:bg-wash focus-visible:outline-accent flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <BrandMark size={22} className="text-accent" />
+          <span className="text-[13px] font-medium tracking-tight">SubIQ</span>
+        </Link>
       </div>
 
       <SidebarNav insightCount={insightCount} />

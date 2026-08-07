@@ -132,6 +132,21 @@ email).
   `db.$transaction` so a failed insert can't orphan a category. A concurrent
   same-slug create rolls back rather than being caught — the retry finds the
   winner and reuses it.
+- **The app shell brand links home (2026-08-07).** There was no way out of the
+  authenticated app — the sidebar brand was a plain `<div>` and the topbar's
+  leading "SubIQ" breadcrumb a plain `<span>`. All three brand elements
+  (`sidebar.tsx`, `topbar.tsx` breadcrumb root, `mobile-nav.tsx` sheet title)
+  are now `<Link href="/">`. **Relative, never the production domain** — that
+  would break dev/preview and turn a same-origin nav cross-origin. The
+  breadcrumb link matters most: below 760px the sidebar is `hidden md:flex`, so
+  it's the only brand element on screen. Accessible names are deliberately
+  split — "SubIQ home" (sidebar + drawer, never both in the a11y tree since
+  their breakpoints are mutually exclusive) vs "SubIQ" (breadcrumb) — so
+  `getByRole("link", …)` can't go ambiguous. Covered by two new e2e tests
+  including a 390px-viewport one. Note for future work: **every `href` in
+  `components/shell/` is a literal**; the only variable navigation targets are
+  in the command palette (`sub.name` is `encodeURIComponent`'d, category slugs
+  are `[a-z0-9-]` by construction via `lib/slug.ts`). Keep it that way.
 - **Settings saves as one unit.** Three per-field Saves → one "Save changes":
   `updateSettingsSchema` + `updateSettings` (one `$transaction`, returns
   `currencyChanged` derived from the stored row, never the client) +
